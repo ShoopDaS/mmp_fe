@@ -1,5 +1,9 @@
+// Configuration
+const BACKEND_URL = "http://127.0.0.1:8080";
+
 // State
 let accessToken = "";
+let sessionToken = "";
 let spotifyPlayer = null;
 let deviceId = null;
 let currentTrackUri = null;
@@ -9,41 +13,14 @@ let isPlayerReady = false;
 // Elements
 const authSection = document.getElementById("authSection");
 const searchSection = document.getElementById("searchSection");
-const clientIdInput = document.getElementById("clientIdInput");
 const loginBtn = document.getElementById("loginBtn");
 const searchInput = document.getElementById("searchInput");
 const searchBtn = document.getElementById("searchBtn");
 const resultsContainer = document.getElementById("resultsContainer");
-const redirectUriElement = document.getElementById("redirectUri");
 const playerStatus = document.getElementById("playerStatus");
 const nowPlaying = document.getElementById("nowPlaying");
 const playPauseBtn = document.getElementById("playPauseBtn");
 const playPauseIcon = document.getElementById("playPauseIcon");
-
-// Set redirect URI display
-const redirectUri = window.location.href.split("?")[0].split("#")[0];
-redirectUriElement.textContent = redirectUri;
-
-// PKCE Helper Functions
-function generateRandomString(length) {
-  const possible =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  const values = crypto.getRandomValues(new Uint8Array(length));
-  return values.reduce((acc, x) => acc + possible[x % possible.length], "");
-}
-
-async function sha256(plain) {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(plain);
-  return window.crypto.subtle.digest("SHA-256", data);
-}
-
-function base64encode(input) {
-  return btoa(String.fromCharCode(...new Uint8Array(input)))
-    .replace(/=/g, "")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_");
-}
 
 // Initialize Spotify Web Playback SDK
 window.onSpotifyWebPlaybackSDKReady = () => {
@@ -94,7 +71,7 @@ async function initializePlayer() {
 
   spotifyPlayer.addListener("authentication_error", ({ message }) => {
     console.error("Auth Error:", message);
-    localStorage.removeItem("spotify_token");
+    localStorage.removeItem("spotify_session");
     location.reload();
   });
 
@@ -115,7 +92,6 @@ async function initializePlayer() {
   // Player state changed
   spotifyPlayer.addListener("player_state_changed", (state) => {
     if (!state) return;
-
     updateNowPlaying(state);
   });
 
@@ -191,7 +167,7 @@ async function playTrack(uri, previewUrl) {
     }
   } else {
     // Free: Play 30-second preview
-    if (!previewUrl) {
+    if (!previewUrl || previewUrl === "null") {
       alert("No preview available for this track");
       return;
     }
@@ -204,65 +180,62 @@ async function playTrack(uri, previewUrl) {
     // Play preview
     window.currentPreviewAudio = new Audio(previewUrl);
     window.currentPreviewAudio.play();
-
-    // Show simple now playing (for free users)
-    nowPlaying.classList.remove("hidden");
   }
 }
 
-// Check for authorization code in URL
-async function checkForAuthCode() {
+// Check for session token in URL (returned from backend)
+async function checkForSession() {
   const params = new URLSearchParams(window.location.search);
-  const code = params.get("code");
+  const session = params.get("session");
 
-  if (code) {
-    const codeVerifier = localStorage.getItem("code_verifier");
-    const clientId = localStorage.getItem("spotify_client_id");
+  if (session) {
+    // Got session token from backend
+    sessionToken = session;
+    localStorage.setItem("spotify_session", session);
 
-    if (!codeVerifier || !clientId) {
-      alert("Missing authentication data. Please try logging in again.");
-      return;
-    }
+    // Clean up URL
+    window.history.replaceState({}, document.title, window.location.pathname);
 
-    try {
-      const response = await fetch("https://accounts.spotify.com/api/token", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: new URLSearchParams({
-          client_id: clientId,
-          grant_type: "authorization_code",
-          code: code,
-          redirect_uri: redirectUri,
-          code_verifier: codeVerifier,
-        }),
-      });
+    // Get access token from backend using session
+    await getAccessToken(session);
 
-      if (!response.ok) {
-        throw new Error("Token exchange failed");
-      }
-
-      const data = await response.json();
-      accessToken = data.access_token;
-      localStorage.setItem("spotify_token", accessToken);
-      localStorage.removeItem("code_verifier");
-
-      window.history.replaceState({}, document.title, redirectUri);
-
-      showSearchSection();
-      initializePlayer();
-    } catch (error) {
-      console.error("Error:", error);
-      alert("Authentication failed. Please try again.");
-    }
+    showSearchSection();
+    initializePlayer();
   } else {
-    const storedToken = localStorage.getItem("spotify_token");
-    if (storedToken) {
-      accessToken = storedToken;
+    // Check localStorage for existing session
+    const storedSession = localStorage.getItem("spotify_session");
+    if (storedSession) {
+      sessionToken = storedSession;
+      await getAccessToken(storedSession);
       showSearchSection();
       initializePlayer();
     }
+  }
+}
+
+// Get access token from backend
+async function getAccessToken(session) {
+  try {
+    const response = await fetch(`${BACKEND_URL}/auth/spotify/refresh`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session}`,
+      },
+    });
+
+    const data = await response.json();
+    if (data.accessToken) {
+      accessToken = data.accessToken;
+    } else {
+      // Session expired, need to login again
+      localStorage.removeItem("spotify_session");
+      location.reload();
+    }
+  } catch (error) {
+    console.error("Error getting access token:", error);
+    localStorage.removeItem("spotify_session");
+    location.reload();
   }
 }
 
@@ -271,45 +244,31 @@ function showSearchSection() {
   searchSection.classList.remove("hidden");
 }
 
-// Login handler with PKCE
+// Login handler - simplified without client ID input
 loginBtn.addEventListener("click", async () => {
-  const clientId = clientIdInput.value.trim();
-  if (!clientId) {
-    alert("Please enter your Spotify Client ID first");
-    return;
+  try {
+    const response = await fetch(`${BACKEND_URL}/auth/spotify/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    const data = await response.json();
+
+    if (data.authUrl) {
+      // Redirect to Spotify OAuth
+      window.location.href = data.authUrl;
+    } else {
+      alert("Failed to initiate login");
+    }
+  } catch (error) {
+    console.error("Login error:", error);
+    alert(
+      "Failed to connect to backend. Make sure it is running on http://127.0.0.1:8080"
+    );
   }
-
-  localStorage.setItem("spotify_client_id", clientId);
-
-  const codeVerifier = generateRandomString(64);
-  const hashed = await sha256(codeVerifier);
-  const codeChallenge = base64encode(hashed);
-
-  localStorage.setItem("code_verifier", codeVerifier);
-
-  // Request streaming scope for playback
-  const scope =
-    "user-read-private user-read-email streaming user-modify-playback-state user-read-playback-state";
-  const authUrl = new URL("https://accounts.spotify.com/authorize");
-
-  const params = {
-    response_type: "code",
-    client_id: clientId,
-    scope: scope,
-    code_challenge_method: "S256",
-    code_challenge: codeChallenge,
-    redirect_uri: redirectUri,
-  };
-
-  authUrl.search = new URLSearchParams(params).toString();
-  window.location.href = authUrl.toString();
 });
-
-// Load saved client ID
-const savedClientId = localStorage.getItem("spotify_client_id");
-if (savedClientId) {
-  clientIdInput.value = savedClientId;
-}
 
 // Search handler
 async function performSearch() {
@@ -337,7 +296,7 @@ async function performSearch() {
   } catch (error) {
     alert("Search failed. Your token might have expired. Please login again.");
     console.error(error);
-    localStorage.removeItem("spotify_token");
+    localStorage.removeItem("spotify_session");
     location.reload();
   }
 }
@@ -405,4 +364,4 @@ function displayResults(tracks) {
 window.playTrack = playTrack;
 
 // Initialize
-checkForAuthCode();
+checkForSession();
