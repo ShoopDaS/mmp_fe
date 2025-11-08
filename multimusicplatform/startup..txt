@@ -1,0 +1,2 @@
+start backend
+run npm run dev
