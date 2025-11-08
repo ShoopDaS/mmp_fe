@@ -7,18 +7,18 @@ import { apiClient } from '@/lib/api';
 import Header from '@/components/layout/Header';
 import SearchBar from '@/components/music/SearchBar';
 import TrackList from '@/components/music/TrackList';
-import MusicPlayer from '@/components/music/MusicPlayer';
+import MusicPlayer from '@/components/music/MusicPlayerPremium';
 
 interface SpotifyTrack {
   id: string;
   name: string;
+  uri: string;
   artists: { name: string }[];
   album: {
     name: string;
     images: { url: string }[];
   };
   preview_url: string | null;
-  uri: string;
 }
 
 export default function SearchPage() {
@@ -113,7 +113,9 @@ export default function SearchPage() {
       </main>
 
       {/* Fixed player at bottom */}
-      {currentTrack && <MusicPlayer track={currentTrack} />}
+      {currentTrack && spotifyToken && (
+        <MusicPlayer track={currentTrack} spotifyToken={spotifyToken} />
+      )}
     </div>
   );
 }

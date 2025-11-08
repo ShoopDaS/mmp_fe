@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import LoginSection from '@/components/auth/LoginSection';
@@ -10,33 +10,46 @@ export default function HomePage() {
   const searchParams = useSearchParams();
   const { login, isAuthenticated, isLoading } = useAuth();
   const [error, setError] = useState<string | null>(null);
+  const hasProcessedSession = useRef(false);
 
   useEffect(() => {
     // Handle OAuth callback with session token
     const sessionToken = searchParams?.get('session');
     const errorParam = searchParams?.get('error');
 
-    if (sessionToken) {
-      login(sessionToken).then(() => {
-        router.replace('/dashboard');
-      });
-    } else if (errorParam) {
+    if (sessionToken && !hasProcessedSession.current) {
+      hasProcessedSession.current = true;
+      login(sessionToken)
+        .then(() => {
+          router.replace('/dashboard');
+        })
+        .catch((err) => {
+          setError('Login failed. Please try again.');
+          hasProcessedSession.current = false;
+        });
+      return;
+    }
+
+    if (errorParam) {
       setError(`Login failed: ${errorParam}`);
-    } else if (isAuthenticated && !isLoading) {
+      return;
+    }
+
+    if (isAuthenticated && !isLoading && !sessionToken) {
       // Already logged in, redirect to dashboard
       router.replace('/dashboard');
     }
-  }, [searchParams, login, isAuthenticated, isLoading, router]);
+  }, [searchParams, isAuthenticated, isLoading, router, login]);
 
-  if (isLoading) {
+  if (isLoading || (searchParams?.get('session') && !error)) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-xl">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-900 via-blue-900 to-black">
+        <div className="text-xl text-white">Loading...</div>
       </div>
     );
   }
 
-  if (isAuthenticated) {
+  if (isAuthenticated && !searchParams?.get('session')) {
     return null; // Will redirect
   }
 
