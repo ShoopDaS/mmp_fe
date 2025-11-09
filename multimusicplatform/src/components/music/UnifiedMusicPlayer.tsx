@@ -30,6 +30,7 @@ export default function UnifiedMusicPlayer({
   const [showVolume, setShowVolume] = useState(false);
   const adapterRef = useRef<IPlayerAdapter | null>(null);
   const initRef = useRef(false);
+  const isLoopingRef = useRef(false); // 👈 Add this  
 
   // Initialize adapter based on platform
   useEffect(() => {
@@ -61,7 +62,7 @@ export default function UnifiedMusicPlayer({
       });
 
       adapter.onTrackEnd(() => {
-        if (playerState.isLooping) {
+        if (isLoopingRef.current) {
           // Replay the same track
           adapter.play(track);
         } else if (onTrackEnd) {
@@ -96,6 +97,11 @@ export default function UnifiedMusicPlayer({
       }
     };
   }, []);
+
+  // Sync loop ref with state
+  useEffect(() => {
+    isLoopingRef.current = playerState.isLooping;
+  }, [playerState.isLooping]);
 
   // Play track when it changes
   useEffect(() => {
