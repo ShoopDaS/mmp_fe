@@ -7,10 +7,11 @@ import { apiClient } from '@/lib/api';
 import Header from '@/components/layout/Header';
 import SearchBar from '@/components/music/SearchBar';
 import TrackList from '@/components/music/TrackList';
-import MusicPlayer from '@/components/music/MusicPlayerPremium';
+import UnifiedMusicPlayer from '@/components/music/UnifiedMusicPlayer';
 
-interface SpotifyTrack {
+interface Track {
   id: string;
+  platform: 'spotify' | 'soundcloud' | 'youtube';  // 👈 ADD THIS
   name: string;
   uri: string;
   artists: { name: string }[];
@@ -18,16 +19,16 @@ interface SpotifyTrack {
     name: string;
     images: { url: string }[];
   };
+  duration_ms: number;  // 👈 ADD THIS (needed for progress bar)
   preview_url: string | null;
 }
-
 export default function SearchPage() {
   const router = useRouter();
   const { isLoading: authLoading, isAuthenticated } = useAuth();
   const [spotifyToken, setSpotifyToken] = useState<string | null>(null);
-  const [tracks, setTracks] = useState<SpotifyTrack[]>([]);
+  const [tracks, setTracks] = useState<Track[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [currentTrack, setCurrentTrack] = useState<SpotifyTrack | null>(null);
+  const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -72,7 +73,17 @@ export default function SearchPage() {
       }
 
       const data = await response.json();
-      setTracks(data.tracks?.items || []);
+      const mappedTracks: Track[] = (data.tracks?.items || []).map((item: any) => ({
+        id: item.id,
+        platform: 'spotify', // 👈 ADD THIS
+        name: item.name,
+        uri: item.uri,
+        artists: item.artists,
+        album: item.album,
+        duration_ms: item.duration_ms, // 👈 ADD THIS
+        preview_url: item.preview_url,
+      }));
+      setTracks(mappedTracks);
     } catch (error) {
       console.error('Search error:', error);
     } finally {
@@ -114,7 +125,7 @@ export default function SearchPage() {
 
       {/* Fixed player at bottom */}
       {currentTrack && spotifyToken && (
-        <MusicPlayer track={currentTrack} spotifyToken={spotifyToken} />
+        <UnifiedMusicPlayer track={currentTrack} token={spotifyToken} />
       )}
     </div>
   );
