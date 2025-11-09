@@ -19,7 +19,6 @@ interface MusicPlayerProps {
   spotifyToken: string;
 }
 
-// Extend Window interface for Spotify SDK
 declare global {
   interface Window {
     onSpotifyWebPlaybackSDKReady: () => void;
@@ -31,170 +30,124 @@ export default function MusicPlayer({ track, spotifyToken }: MusicPlayerProps) {
   const [player, setPlayer] = useState<any>(null);
   const [deviceId, setDeviceId] = useState<string>('');
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isSDKReady, setIsSDKReady] = useState(false);
-  const [usePreview, setUsePreview] = useState(false);
+  const [isPremium, setIsPremium] = useState<boolean | null>(null);
+  const [error, setError] = useState<string>('');
   const audioRef = useRef<HTMLAudioElement>(null);
+  const initRef = useRef(false);
 
-  // Load Spotify Web Playback SDK
   useEffect(() => {
-    // Check if already loaded
-    if (window.Spotify) {
-      setIsSDKReady(true);
-      return;
-    }
+    if (initRef.current) return;
+    initRef.current = true;
 
-    // Load SDK script
+    console.log('🎵 Loading Spotify SDK...');
     const script = document.createElement('script');
     script.src = 'https://sdk.scdn.co/spotify-player.js';
     script.async = true;
-    document.body.appendChild(script);
 
     window.onSpotifyWebPlaybackSDKReady = () => {
-      setIsSDKReady(true);
+      console.log('✅ SDK Ready');
+      initPlayer();
     };
 
-    return () => {
-      document.body.removeChild(script);
-    };
+    document.body.appendChild(script);
   }, []);
 
-  // Initialize Spotify Player
-  useEffect(() => {
-    if (!isSDKReady || !spotifyToken) return;
+  const initPlayer = () => {
+    console.log('🎮 Init Player with token:', spotifyToken?.substring(0, 20) + '...');
 
-    const spotifyPlayer = new window.Spotify.Player({
+    const sp = new window.Spotify.Player({
       name: 'MultiMusic Web Player',
-      getOAuthToken: (cb: (token: string) => void) => {
-        cb(spotifyToken);
-      },
+      getOAuthToken: (cb: (t: string) => void) => cb(spotifyToken),
       volume: 0.8
     });
 
-    // Ready
-    spotifyPlayer.addListener('ready', ({ device_id }: { device_id: string }) => {
-      console.log('Spotify Player Ready with Device ID', device_id);
+    sp.addListener('ready', ({ device_id }: any) => {
+      console.log('✅ Ready! Device:', device_id);
       setDeviceId(device_id);
+      setIsPremium(true);
     });
 
-    // Not Ready
-    spotifyPlayer.addListener('not_ready', ({ device_id }: { device_id: string }) => {
-      console.log('Device ID has gone offline', device_id);
+    sp.addListener('not_ready', () => console.log('❌ Not ready'));
+    sp.addListener('player_state_changed', (state: any) => {
+      if (state) setIsPlaying(!state.paused);
     });
 
-    // Player state changed
-    spotifyPlayer.addListener('player_state_changed', (state: any) => {
-      if (!state) return;
-      setIsPlaying(!state.paused);
+    sp.addListener('account_error', (e: any) => {
+      console.error('❌ Account error:', e.message);
+      setIsPremium(false);
+      setError('Premium required');
     });
 
-    // Errors
-    spotifyPlayer.addListener('initialization_error', ({ message }: { message: string }) => {
-      console.error('Initialization Error:', message);
-      setUsePreview(true); // Fall back to preview
+    sp.addListener('authentication_error', (e: any) => {
+      console.error('❌ Auth error:', e.message);
+      setIsPremium(false);
     });
 
-    spotifyPlayer.addListener('authentication_error', ({ message }: { message: string }) => {
-      console.error('Authentication Error:', message);
-      setUsePreview(true);
+    sp.addListener('initialization_error', (e: any) => {
+      console.error('❌ Init error:', e.message);
+      setIsPremium(false);
     });
 
-    spotifyPlayer.addListener('account_error', ({ message }: { message: string }) => {
-      console.error('Account Error:', message);
-      setUsePreview(true); // Premium required
+    sp.connect().then((ok: boolean) => {
+      console.log(ok ? '✅ Connected' : '❌ Connect failed');
+      if (!ok) setIsPremium(false);
     });
 
-    spotifyPlayer.addListener('playback_error', ({ message }: { message: string }) => {
-      console.error('Playback Error:', message);
-    });
+    setPlayer(sp);
+  };
 
-    // Connect to the player
-    spotifyPlayer.connect();
-
-    setPlayer(spotifyPlayer);
-
-    return () => {
-      spotifyPlayer.disconnect();
-    };
-  }, [isSDKReady, spotifyToken]);
-
-  // Play track when device is ready and track changes
   useEffect(() => {
-    if (!deviceId || !track || usePreview) return;
+    if (!deviceId || !track || isPremium === false) return;
 
-    playTrackOnDevice(track.uri, deviceId, spotifyToken);
-  }, [track, deviceId, spotifyToken, usePreview]);
+    console.log('🎵 Play:', track.name, 'on device:', deviceId);
+    playTrack(track.uri);
+  }, [track, deviceId, isPremium]);
 
-  // Preview fallback
   useEffect(() => {
-    if (!usePreview || !track.preview_url) return;
+    if (isPremium !== false || !track.preview_url || !audioRef.current) return;
 
-    if (audioRef.current) {
-      audioRef.current.src = track.preview_url;
-      audioRef.current.play();
-      setIsPlaying(true);
-    }
-  }, [track, usePreview]);
+    console.log('🎵 Preview:', track.name);
+    audioRef.current.src = track.preview_url;
+    audioRef.current.play();
+    setIsPlaying(true);
+  }, [track, isPremium]);
 
-  const playTrackOnDevice = async (trackUri: string, deviceId: string, token: string) => {
+  const playTrack = async (uri: string) => {
     try {
-      const response = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
+      const res = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
         method: 'PUT',
-        body: JSON.stringify({ uris: [trackUri] }),
+        body: JSON.stringify({ uris: [uri] }),
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${spotifyToken}`
         },
       });
 
-      if (!response.ok) {
-        console.error('Failed to play track:', response.status);
-        if (response.status === 403) {
-          // Premium required
-          console.log('Premium required, falling back to preview');
-          setUsePreview(true);
-        }
-      }
-    } catch (error) {
-      console.error('Error playing track:', error);
-    }
-  };
-
-  const togglePlay = () => {
-    if (usePreview && audioRef.current) {
-      // Preview playback
-      if (isPlaying) {
-        audioRef.current.pause();
+      if (res.ok) {
+        console.log('✅ Playing');
       } else {
-        audioRef.current.play();
+        console.error('❌ Play failed:', res.status);
+        if (res.status === 403) setIsPremium(false);
       }
-      setIsPlaying(!isPlaying);
-    } else if (player) {
-      // Full playback
-      player.togglePlay();
+    } catch (e) {
+      console.error('❌ Error:', e);
     }
   };
 
-  // Show loading while SDK initializes
-  if (!isSDKReady && !usePreview) {
-    return (
-      <div className="fixed bottom-0 left-0 right-0 bg-black/90 backdrop-blur-lg border-t border-white/10 p-4">
-        <div className="max-w-6xl mx-auto flex items-center gap-4">
-          <div className="flex-1 text-center text-gray-400">
-            Loading Spotify Player...
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const toggle = () => {
+    if (isPremium && player) {
+      player.togglePlay();
+    } else if (audioRef.current) {
+      isPlaying ? audioRef.current.pause() : audioRef.current.play();
+      setIsPlaying(!isPlaying);
+    }
+  };
 
-  // Show message if no preview and SDK failed
-  if (usePreview && !track.preview_url) {
+  if (isPremium === false && !track.preview_url) {
     return (
       <div className="fixed bottom-0 left-0 right-0 bg-black/90 backdrop-blur-lg border-t border-white/10 p-4">
-        <div className="max-w-6xl mx-auto flex items-center gap-4">
-          <div className="flex-1 text-center text-gray-400">
-            ⚠️ Playback not available for this track
-          </div>
+        <div className="max-w-6xl mx-auto text-center text-gray-400">
+          ⚠️ No playback available
         </div>
       </div>
     );
@@ -202,36 +155,39 @@ export default function MusicPlayer({ track, spotifyToken }: MusicPlayerProps) {
 
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-black/90 backdrop-blur-lg border-t border-white/10 p-4">
-      {usePreview && <audio ref={audioRef} onEnded={() => setIsPlaying(false)} />}
+      {isPremium === false && <audio ref={audioRef} onEnded={() => setIsPlaying(false)} />}
       
       <div className="max-w-6xl mx-auto flex items-center gap-4">
-        {/* Album art */}
         <img
-          src={track.album.images[0]?.url || ''}
+          src={track.album.images[0]?.url}
           alt={track.album.name}
           className="w-16 h-16 rounded"
         />
 
-        {/* Track info */}
         <div className="flex-1 min-w-0">
           <h3 className="font-semibold text-white truncate">{track.name}</h3>
           <p className="text-sm text-gray-300 truncate">
             {track.artists.map(a => a.name).join(', ')}
           </p>
-          {usePreview && (
-            <p className="text-xs text-yellow-400">30s Preview (Premium required for full playback)</p>
-          )}
-          {!usePreview && deviceId && (
-            <p className="text-xs text-green-400">Premium Playback Active</p>
-          )}
+          <p className={`text-xs ${isPremium ? 'text-green-400' : 'text-yellow-400'}`}>
+            {isPremium === null && 'Loading...'}
+            {isPremium === true && '🎵 Premium'}
+            {isPremium === false && '⏱️ 30s Preview'}
+          </p>
         </div>
 
-        {/* Controls */}
         <button
-          onClick={togglePlay}
+          onClick={toggle}
           className="w-12 h-12 bg-white rounded-full flex items-center justify-center hover:scale-110 transition-transform"
         >
           <span className="text-2xl">{isPlaying ? '⏸️' : '▶️'}</span>
+        </button>
+
+        <button
+          onClick={() => console.log('Debug:', { isPremium, deviceId, hasPlayer: !!player, uri: track.uri })}
+          className="px-3 py-1 bg-gray-700 text-white text-xs rounded"
+        >
+          Debug
         </button>
       </div>
     </div>
