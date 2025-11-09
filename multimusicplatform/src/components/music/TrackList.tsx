@@ -19,33 +19,22 @@ interface TrackListProps {
 }
 
 export default function TrackList({ tracks, onPlay, currentTrack }: TrackListProps) {
-  const tracksWithPreview = tracks.filter(t => t.preview_url).length;
-  
   return (
     <div>
-      {tracksWithPreview < tracks.length && (
-        <div className="mb-4 bg-yellow-500/20 border border-yellow-500 text-yellow-100 px-4 py-3 rounded">
-          ℹ️ {tracksWithPreview} of {tracks.length} tracks have preview available. 
-          This is normal - not all Spotify tracks have previews.
-        </div>
-      )}
-      
       <div className="space-y-2">
         {tracks.map((track) => {
           const isPlaying = currentTrack?.id === track.id;
           const albumImage = track.album.images[0]?.url || '';
-          const hasPreview = !!track.preview_url;
 
           return (
             <div
               key={track.id}
               className={`
-                flex items-center gap-4 p-4 rounded-lg transition-all
+                flex items-center gap-4 p-4 rounded-lg transition-all cursor-pointer
                 ${isPlaying ? 'bg-purple-600' : 'bg-white/10 hover:bg-white/20'}
-                ${!hasPreview ? 'opacity-60' : 'cursor-pointer'}
                 backdrop-blur-sm
               `}
-              onClick={() => hasPreview && onPlay(track)}
+              onClick={() => onPlay(track)}
             >
               {/* Album art */}
               {albumImage && (
@@ -65,13 +54,9 @@ export default function TrackList({ tracks, onPlay, currentTrack }: TrackListPro
                 <p className="text-xs text-gray-400 truncate">{track.album.name}</p>
               </div>
 
-              {/* Play indicator or no preview message */}
+              {/* Play indicator */}
               <div className="text-2xl">
-                {hasPreview ? (
-                  isPlaying ? '⏸️' : '▶️'
-                ) : (
-                  <span className="text-xs text-gray-400">No preview</span>
-                )}
+                {isPlaying ? '⏸️' : '▶️'}
               </div>
             </div>
           );
