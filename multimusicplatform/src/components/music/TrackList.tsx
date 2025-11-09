@@ -10,6 +10,7 @@ interface Track {
     images: { url: string }[];
   };
   preview_url: string | null;
+  platform: 'spotify' | 'soundcloud' | 'youtube';
 }
 
 interface TrackListProps {
