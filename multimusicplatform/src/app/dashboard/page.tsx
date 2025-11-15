@@ -36,16 +36,32 @@ export default function DashboardPage() {
 
     // Check for connection status
     const spotify = searchParams?.get('spotify');
+    const youtube = searchParams?.get('youtube');
+    const soundcloud = searchParams?.get('soundcloud');
     const error = searchParams?.get('error');
 
     if (spotify === 'connected') {
       setMessage({ type: 'success', text: 'Spotify connected successfully!' });
-      // Clear URL params
       router.replace('/dashboard');
-    } else if (error) {
-      setMessage({ type: 'error', text: `Connection failed: ${error}` });
-      router.replace('/dashboard');
-    }
+      } else if (youtube === 'connected') {
+        setMessage({ type: 'success', text: 'YouTube Music connected successfully!' });
+        router.replace('/dashboard');
+      } else if (soundcloud === 'connected') {  // Add this
+        setMessage({ type: 'success', text: 'SoundCloud connected successfully!' });
+        router.replace('/dashboard');
+      } else if (error) {
+        // Handle error messages
+        let errorMsg = 'Connection failed';
+        if (error.startsWith('youtube_')) {
+          errorMsg = `YouTube Music: ${error.replace('youtube_', '')}`;
+        } else if (error.startsWith('soundcloud_')) {  // Add this
+          errorMsg = `SoundCloud: ${error.replace('soundcloud_', '')}`;
+        } else {
+          errorMsg = error;
+        }
+        setMessage({ type: 'error', text: errorMsg });
+        router.replace('/dashboard');
+      }
   }, [authLoading, isAuthenticated, router, searchParams]);
 
   const loadPlatforms = async () => {
@@ -79,6 +95,8 @@ export default function DashboardPage() {
   }
 
   const spotifyConnected = platforms.some(p => p.platform === 'spotify');
+  const youtubeConnected = platforms.some(p => p.platform === 'youtube');
+  const soundcloudConnected = platforms.some(p => p.platform === 'soundcloud'); 
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-black">
@@ -134,15 +152,20 @@ export default function DashboardPage() {
               onConnect={loadPlatforms}
             />
             <ConnectButton 
+              platform="youtube" 
+              connected={youtubeConnected}
+              onConnect={loadPlatforms}
+            />
+            <ConnectButton 
               platform="soundcloud" 
-              connected={false}
-              comingSoon
+              connected={soundcloudConnected}
+              onConnect={loadPlatforms}
             />
           </div>
         </div>
 
         {/* Actions */}
-        {spotifyConnected && (
+        {(spotifyConnected || youtubeConnected || soundcloudConnected) && (
           <div className="mt-8">
             <button
               onClick={() => router.push('/search')}
