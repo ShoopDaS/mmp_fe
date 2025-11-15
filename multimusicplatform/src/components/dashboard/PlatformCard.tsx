@@ -24,6 +24,11 @@ const platformInfo: Record<string, { name: string; icon: string; color: string }
     icon: '🔊',
     color: 'from-orange-600 to-orange-800',
   },
+  youtube: {  // Add YouTube
+    name: 'YouTube Music',
+    icon: '🎬',
+    color: 'from-red-600 to-red-800',
+  },
 };
 
 export default function PlatformCard({ platform, onDisconnect }: PlatformCardProps) {
