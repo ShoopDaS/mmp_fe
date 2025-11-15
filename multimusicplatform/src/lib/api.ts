@@ -89,6 +89,38 @@ class ApiClient {
     );
   }
 
+  async youtubeConnect() {
+    return this.request<{ authUrl: string; state: string }>(
+      '/platforms/youtube/connect',
+      { method: 'POST' },
+      true
+    );
+  }
+
+  async youtubeRefresh() {
+    return this.request<{ accessToken: string; expiresIn: number }>(
+      '/platforms/youtube/refresh',
+      { method: 'POST' },
+      true
+    );
+  }
+
+  async soundcloudConnect() {
+  return this.request<{ authUrl: string; state: string }>(
+      '/platforms/soundcloud/connect',
+      { method: 'POST' },
+      true
+    );
+  }
+
+  async soundcloudRefresh() {
+    return this.request<{ accessToken: string; expiresIn: number }>(
+      '/platforms/soundcloud/refresh',
+      { method: 'POST' },
+      true
+    );
+  }
+
   // User endpoints
   async getUserProfile() {
     return this.request('/user/profile', {}, true);
