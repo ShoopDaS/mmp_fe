@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { apiClient } from '@/lib/api';
 
 interface ConnectButtonProps {
-  platform: 'spotify' | 'soundcloud';
+  platform: 'spotify' | 'soundcloud' | 'youtube';
   connected: boolean;
   onConnect?: () => void;
   comingSoon?: boolean;
@@ -22,6 +22,12 @@ const platformInfo = {
     icon: '🔊',
     color: 'bg-orange-600 hover:bg-orange-700',
     description: 'Discover independent artists',
+  },
+  youtube: {  // Add YouTube
+    name: 'YouTube Music',
+    icon: '🎬',
+    color: 'bg-red-600 hover:bg-red-700',
+    description: 'Access your YouTube Music library',
   },
 };
 
@@ -41,6 +47,16 @@ export default function ConnectButton({
 
     if (platform === 'spotify') {
       const response = await apiClient.spotifyConnect();
+      if (response.data?.authUrl) {
+        window.location.href = response.data.authUrl;
+      }
+    } else if (platform === 'youtube') {
+      const response = await apiClient.youtubeConnect();
+      if (response.data?.authUrl) {
+        window.location.href = response.data.authUrl;
+      }
+    } else if (platform === 'soundcloud') {
+      const response = await apiClient.soundcloudConnect();
       if (response.data?.authUrl) {
         window.location.href = response.data.authUrl;
       }
