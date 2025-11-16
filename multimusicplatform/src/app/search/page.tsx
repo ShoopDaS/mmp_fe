@@ -243,22 +243,31 @@ export default function SearchPage() {
 
       const detailsData = await detailsResponse.json();
 
+      // Debug logging
+      console.log('📹 [YouTube] Total videos from API:', detailsData.items?.length || 0);
+      detailsData.items?.forEach((item: any) => {
+        console.log(`📹 [YouTube] "${item.snippet.title.substring(0, 50)}..." - embeddable:`, item.status?.embeddable);
+      });
+
       // Filter only embeddable videos and map to Track format
-      return (detailsData.items || [])
-        .filter((item: any) => item.status?.embeddable === true)
-        .map((item: any) => ({
-          id: `youtube-${item.id}`,
-          platform: 'youtube' as const,
-          name: item.snippet.title,
-          uri: item.id, // Just use video ID for cleaner URI
-          artists: [{ name: item.snippet.channelTitle }],
-          album: {
-            name: item.snippet.channelTitle,
-            images: item.snippet.thumbnails?.high ? [{ url: item.snippet.thumbnails.high.url }] : [],
-          },
-          duration_ms: parseDuration(item.contentDetails?.duration || 'PT0S'),
-          preview_url: null,
-        }));
+      const embeddableVideos = (detailsData.items || [])
+        .filter((item: any) => item.status?.embeddable === true);
+
+      console.log('✅ [YouTube] Embeddable videos:', embeddableVideos.length);
+
+      return embeddableVideos.map((item: any) => ({
+        id: `youtube-${item.id}`,
+        platform: 'youtube' as const,
+        name: item.snippet.title,
+        uri: item.id, // Just use video ID for cleaner URI
+        artists: [{ name: item.snippet.channelTitle }],
+        album: {
+          name: item.snippet.channelTitle,
+          images: item.snippet.thumbnails?.high ? [{ url: item.snippet.thumbnails.high.url }] : [],
+        },
+        duration_ms: parseDuration(item.contentDetails?.duration || 'PT0S'),
+        preview_url: null,
+      }));
     } catch (error) {
       console.error('YouTube search error:', error);
       return [];
