@@ -36,19 +36,32 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
   const [error, setError] = useState<string>('');
   const [showVolume, setShowVolume] = useState(false);
   const adapterRef = useRef<IPlayerAdapter | null>(null);
-  const initRef = useRef(false);
-  const isLoopingRef = useRef(false); // 👈 Add this  
+  const currentPlatformRef = useRef<string | null>(null);
+  const isLoopingRef = useRef(false); // 👈 Add this
 
-  // Initialize adapter based on platform
+  // Initialize adapter based on platform - reinitialize when platform changes
   useEffect(() => {
-    if (initRef.current) return;
-    initRef.current = true;
+    // If platform hasn't changed, don't reinitialize
+    if (currentPlatformRef.current === track.platform && adapterRef.current) {
+      return;
+    }
+
+    // Clear error when switching platforms
+    setError('');
 
     const initAdapter = async () => {
+      // Cleanup old adapter if platform changed
+      if (adapterRef.current && currentPlatformRef.current !== track.platform) {
+        console.log('🧹 Cleaning up old adapter for:', currentPlatformRef.current);
+        adapterRef.current.cleanup();
+        adapterRef.current = null;
+      }
+
       console.log('🎵 Initializing player for platform:', track.platform);
-      
+      currentPlatformRef.current = track.platform;
+
       let adapter: IPlayerAdapter;
-      
+
       switch (track.platform) {
         case 'spotify':
           adapter = new SpotifyAdapter();
@@ -101,9 +114,10 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
     return () => {
       if (adapterRef.current) {
         adapterRef.current.cleanup();
+        adapterRef.current = null;
       }
     };
-  }, []);
+  }, [track.platform, token]);
 
   // Sync loop ref with state
   useEffect(() => {
