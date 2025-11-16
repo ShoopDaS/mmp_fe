@@ -20,6 +20,23 @@ interface TrackListProps {
 }
 
 export default function TrackList({ tracks, onPlay, currentTrack }: TrackListProps) {
+  const getPlatformColors = (platform: Track['platform'], isPlaying: boolean) => {
+    if (isPlaying) {
+      return 'bg-purple-600 border-l-4 border-purple-400';
+    }
+
+    switch (platform) {
+      case 'spotify':
+        return 'bg-green-600/40 hover:bg-green-600/60 border-l-4 border-green-400';
+      case 'soundcloud':
+        return 'bg-orange-600/40 hover:bg-orange-600/60 border-l-4 border-orange-400';
+      case 'youtube':
+        return 'bg-red-600/40 hover:bg-red-600/60 border-l-4 border-red-400';
+      default:
+        return 'bg-white/10 hover:bg-white/20';
+    }
+  };
+
   return (
     <div>
       <div className="space-y-2">
@@ -32,7 +49,7 @@ export default function TrackList({ tracks, onPlay, currentTrack }: TrackListPro
               key={track.id}
               className={`
                 flex items-center gap-4 p-4 rounded-lg transition-all cursor-pointer
-                ${isPlaying ? 'bg-purple-600' : 'bg-white/10 hover:bg-white/20'}
+                ${getPlatformColors(track.platform, isPlaying)}
                 backdrop-blur-sm
               `}
               onClick={() => onPlay(track)}

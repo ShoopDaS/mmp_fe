@@ -1,13 +1,21 @@
 'use client';
 
 import { useState, FormEvent } from 'react';
+import PlatformSelector, { PlatformState } from './PlatformSelector';
 
 interface SearchBarProps {
   onSearch: (query: string) => void;
   isSearching: boolean;
+  selectedPlatforms: PlatformState;
+  onPlatformsChange: (platforms: PlatformState) => void;
 }
 
-export default function SearchBar({ onSearch, isSearching }: SearchBarProps) {
+export default function SearchBar({
+  onSearch,
+  isSearching,
+  selectedPlatforms,
+  onPlatformsChange
+}: SearchBarProps) {
   const [query, setQuery] = useState('');
 
   const handleSubmit = (e: FormEvent) => {
@@ -35,6 +43,10 @@ export default function SearchBar({ onSearch, isSearching }: SearchBarProps) {
         >
           {isSearching ? 'Searching...' : 'Search'}
         </button>
+        <PlatformSelector
+          selectedPlatforms={selectedPlatforms}
+          onPlatformsChange={onPlatformsChange}
+        />
       </div>
     </form>
   );
