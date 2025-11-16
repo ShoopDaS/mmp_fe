@@ -149,11 +149,18 @@ export class YouTubeAdapter implements IPlayerAdapter {
         break;
       case 101:
       case 150:
-        message = 'Video cannot be played in embedded player';
+        message = 'Video cannot be embedded (restricted by owner). This video was filtered during search but may have changed.';
         break;
     }
 
     console.error('❌ [YouTube] Error:', message, errorCode);
+
+    // If we have the current track, add video URL to error message
+    if (this.currentTrack && (errorCode === 101 || errorCode === 150)) {
+      const videoUrl = `https://www.youtube.com/watch?v=${this.extractVideoId(this.currentTrack.uri)}`;
+      message += ` Open on YouTube: ${videoUrl}`;
+    }
+
     this.notifyError(new Error(message));
   }
 

@@ -212,7 +212,8 @@ export default function SearchPage() {
     if (!youtubeToken || !selectedPlatforms.youtube) return [];
 
     try {
-      const response = await fetch(
+      // First, search for videos
+      const searchResponse = await fetch(
         `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&q=${encodeURIComponent(query)}&maxResults=20`,
         {
           headers: {
@@ -221,26 +222,59 @@ export default function SearchPage() {
         }
       );
 
-      if (!response.ok) return [];
+      if (!searchResponse.ok) return [];
 
-      const data = await response.json();
-      return (data.items || []).map((item: any) => ({
-        id: `youtube-${item.id.videoId}`,
-        platform: 'youtube' as const,
-        name: item.snippet.title,
-        uri: `https://www.youtube.com/watch?v=${item.id.videoId}`,
-        artists: [{ name: item.snippet.channelTitle }],
-        album: {
-          name: item.snippet.channelTitle,
-          images: item.snippet.thumbnails?.high ? [{ url: item.snippet.thumbnails.high.url }] : [],
-        },
-        duration_ms: 0, // YouTube API doesn't provide duration in search, would need separate call
-        preview_url: null,
-      }));
+      const searchData = await searchResponse.json();
+      const videoIds = (searchData.items || []).map((item: any) => item.id.videoId);
+
+      if (videoIds.length === 0) return [];
+
+      // Fetch video details to check embeddable status
+      const detailsResponse = await fetch(
+        `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,status&id=${videoIds.join(',')}&maxResults=20`,
+        {
+          headers: {
+            Authorization: `Bearer ${youtubeToken}`,
+          },
+        }
+      );
+
+      if (!detailsResponse.ok) return [];
+
+      const detailsData = await detailsResponse.json();
+
+      // Filter only embeddable videos and map to Track format
+      return (detailsData.items || [])
+        .filter((item: any) => item.status?.embeddable === true)
+        .map((item: any) => ({
+          id: `youtube-${item.id}`,
+          platform: 'youtube' as const,
+          name: item.snippet.title,
+          uri: item.id, // Just use video ID for cleaner URI
+          artists: [{ name: item.snippet.channelTitle }],
+          album: {
+            name: item.snippet.channelTitle,
+            images: item.snippet.thumbnails?.high ? [{ url: item.snippet.thumbnails.high.url }] : [],
+          },
+          duration_ms: parseDuration(item.contentDetails?.duration || 'PT0S'),
+          preview_url: null,
+        }));
     } catch (error) {
       console.error('YouTube search error:', error);
       return [];
     }
+  };
+
+  // Helper function to parse ISO 8601 duration to milliseconds
+  const parseDuration = (isoDuration: string): number => {
+    const match = isoDuration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+    if (!match) return 0;
+
+    const hours = parseInt(match[1] || '0');
+    const minutes = parseInt(match[2] || '0');
+    const seconds = parseInt(match[3] || '0');
+
+    return (hours * 3600 + minutes * 60 + seconds) * 1000;
   };
 
   const handleSearch = async (query: string) => {
