@@ -116,34 +116,19 @@ export default function SearchPage() {
   };
 
   const searchSoundCloud = async (query: string): Promise<Track[]> => {
-    if (!soundcloudToken || !selectedPlatforms.soundcloud) return [];
+    if (!selectedPlatforms.soundcloud) return [];
 
     try {
-      const response = await fetch(
-        `https://api.soundcloud.com/tracks?q=${encodeURIComponent(query)}&limit=20`,
-        {
-          headers: {
-            Authorization: `OAuth ${soundcloudToken}`,
-          },
-        }
-      );
+      // Use backend proxy to avoid CORS issues
+      const response = await apiClient.soundcloudSearch(query);
 
-      if (!response.ok) return [];
+      if (response.error) {
+        console.error('SoundCloud search error:', response.error);
+        return [];
+      }
 
-      const data = await response.json();
-      return data.map((item: any) => ({
-        id: `soundcloud-${item.id}`,
-        platform: 'soundcloud' as const,
-        name: item.title,
-        uri: item.permalink_url,
-        artists: [{ name: item.user.username }],
-        album: {
-          name: item.user.username,
-          images: item.artwork_url ? [{ url: item.artwork_url }] : [],
-        },
-        duration_ms: item.duration,
-        preview_url: item.stream_url,
-      }));
+      // Backend returns normalized tracks
+      return response.data?.tracks || [];
     } catch (error) {
       console.error('SoundCloud search error:', error);
       return [];
