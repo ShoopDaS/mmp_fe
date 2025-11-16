@@ -46,8 +46,17 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
       return;
     }
 
-    // Clear error when switching platforms
+    // Clear error and reset player state when switching platforms
     setError('');
+    setPlayerState({
+      isPlaying: false,
+      currentTime: 0,
+      duration: 0,
+      volume: 0.8,
+      isLooping: false,
+      isShuffle: false,
+      canPlay: false,
+    });
 
     const initAdapter = async () => {
       // Cleanup old adapter if platform changed
