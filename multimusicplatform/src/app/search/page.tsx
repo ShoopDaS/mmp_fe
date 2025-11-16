@@ -358,9 +358,25 @@ export default function SearchPage() {
           onPlatformsChange={setSelectedPlatforms}
         />
 
+        {/* YouTube Warning Banner */}
+        {tracks.length > 0 && tracks.some(t => t.platform === 'youtube') && (
+          <div className="mt-4 mb-4 p-4 bg-red-900/30 border border-red-500/50 rounded-lg">
+            <div className="flex items-start gap-3">
+              <span className="text-2xl">⚠️</span>
+              <div className="flex-1">
+                <h3 className="text-red-300 font-semibold mb-1">YouTube Playback Notice</h3>
+                <p className="text-red-200 text-sm">
+                  Some YouTube videos may not be playable due to licensing restrictions.
+                  If a video fails to play, you'll see a link to open it directly on YouTube.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {tracks.length > 0 && (
-          <TrackList 
-            tracks={tracks} 
+          <TrackList
+            tracks={tracks}
             onPlay={setCurrentTrack}
             currentTrack={currentTrack}
           />
