@@ -41,25 +41,32 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
 
   // Initialize adapter based on platform - reinitialize when platform changes
   useEffect(() => {
-    // If platform hasn't changed and adapter exists, don't reinitialize
-    if (currentPlatformRef.current === track.platform && adapterRef.current) {
-      // But make sure adapter is not in cleanup state
-      return;
-    }
+    let isCancelled = false;
 
     const initAdapter = async () => {
       // Always pause and cleanup existing adapter before creating new one
       if (adapterRef.current) {
-        console.log('🧹 Cleaning up old adapter for:', currentPlatformRef.current);
-        try {
-          // Pause before cleanup to stop playback (awaited to ensure it completes)
-          await adapterRef.current.pause();
-        } catch (err) {
-          console.log('Error pausing old adapter:', err);
+        const oldPlatform = currentPlatformRef.current;
+        const needsCleanup = oldPlatform !== track.platform;
+
+        if (needsCleanup) {
+          console.log('🧹 Cleaning up old adapter for:', oldPlatform);
+          try {
+            // Pause before cleanup to stop playback (awaited to ensure it completes)
+            await adapterRef.current.pause();
+            console.log('✅ Old adapter paused successfully');
+          } catch (err) {
+            console.log('Error pausing old adapter:', err);
+          }
+          adapterRef.current.cleanup();
+          adapterRef.current = null;
+        } else {
+          // Same platform, no need to reinitialize
+          return;
         }
-        adapterRef.current.cleanup();
-        adapterRef.current = null;
       }
+
+      if (isCancelled) return;
 
       // Clear error and reset player state when creating new adapter
       setError('');
@@ -128,18 +135,24 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
     });
 
     return () => {
-      if (adapterRef.current) {
-        // Pause before cleanup to stop playback
-        adapterRef.current.pause().catch(() => {
-          // Ignore errors during cleanup
-        });
-        adapterRef.current.cleanup();
-        // Note: Don't set to null here as initAdapter will handle cleanup
-        // Setting to null here causes a race condition where the new effect
-        // can't access the adapter to pause it
-      }
+      // Only mark as cancelled for cleanup on unmount
+      isCancelled = true;
+      // Don't cleanup adapter here - initAdapter handles platform changes
+      // Only cleanup on full component unmount (handled separately below)
     };
   }, [track.platform, token]);
+
+  // Cleanup on component unmount only
+  useEffect(() => {
+    return () => {
+      if (adapterRef.current) {
+        console.log('🧹 Component unmounting, cleaning up adapter');
+        adapterRef.current.pause().catch(() => {});
+        adapterRef.current.cleanup();
+        adapterRef.current = null;
+      }
+    };
+  }, []);
 
   // Sync loop ref with state
   useEffect(() => {
