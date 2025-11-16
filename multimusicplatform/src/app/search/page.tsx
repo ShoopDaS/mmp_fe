@@ -243,17 +243,39 @@ export default function SearchPage() {
 
       const detailsData = await detailsResponse.json();
 
-      // Debug logging
+      // Debug logging - show full status for debugging
       console.log('📹 [YouTube] Total videos from API:', detailsData.items?.length || 0);
-      detailsData.items?.forEach((item: any) => {
-        console.log(`📹 [YouTube] "${item.snippet.title.substring(0, 50)}..." - embeddable:`, item.status?.embeddable);
+      detailsData.items?.forEach((item: any, index: number) => {
+        console.log(`📹 [${index + 1}] "${item.snippet.title.substring(0, 40)}..."`, {
+          id: item.id,
+          embeddable: item.status?.embeddable,
+          publicStatsViewable: item.status?.publicStatsViewable,
+          license: item.status?.license,
+          regionRestriction: item.contentDetails?.regionRestriction,
+          contentRating: item.contentDetails?.contentRating
+        });
       });
 
-      // Filter only embeddable videos and map to Track format
+      // Filter videos that can actually be embedded
+      // Unfortunately, YouTube's embeddable flag is unreliable for music videos
+      // Many report as embeddable but fail with error 150 due to undisclosed restrictions
       const embeddableVideos = (detailsData.items || [])
-        .filter((item: any) => item.status?.embeddable === true);
+        .filter((item: any) => {
+          const embeddable = item.status?.embeddable === true;
+          const publicStats = item.status?.publicStatsViewable !== false;
+          const notAgeRestricted = !item.contentDetails?.contentRating?.ytRating;
+          const noRegionBlock = !item.contentDetails?.regionRestriction?.blocked;
 
-      console.log('✅ [YouTube] Embeddable videos:', embeddableVideos.length);
+          const passes = embeddable && publicStats && notAgeRestricted && noRegionBlock;
+
+          if (!passes) {
+            console.log(`❌ Filtered out: "${item.snippet.title.substring(0, 40)}..." - embeddable:${embeddable}, publicStats:${publicStats}, notAge:${notAgeRestricted}, noRegion:${noRegionBlock}`);
+          }
+
+          return passes;
+        });
+
+      console.log('✅ [YouTube] Playable videos (after filtering):', embeddableVideos.length, 'out of', detailsData.items?.length);
 
       return embeddableVideos.map((item: any) => ({
         id: `youtube-${item.id}`,
