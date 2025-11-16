@@ -62,6 +62,8 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
       // Cleanup old adapter if platform changed
       if (adapterRef.current && currentPlatformRef.current !== track.platform) {
         console.log('🧹 Cleaning up old adapter for:', currentPlatformRef.current);
+        // Pause before cleanup to stop playback
+        await adapterRef.current.pause();
         adapterRef.current.cleanup();
         adapterRef.current = null;
       }
@@ -122,6 +124,10 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
 
     return () => {
       if (adapterRef.current) {
+        // Pause before cleanup to stop playback
+        adapterRef.current.pause().catch(() => {
+          // Ignore errors during cleanup
+        });
         adapterRef.current.cleanup();
         adapterRef.current = null;
       }
