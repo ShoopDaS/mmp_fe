@@ -212,7 +212,8 @@ export default function SearchPage() {
     if (!youtubeToken || !selectedPlatforms.youtube) return [];
 
     try {
-      const response = await fetch(
+      // First, search for videos
+      const searchResponse = await fetch(
         `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&q=${encodeURIComponent(query)}&maxResults=20`,
         {
           headers: {
@@ -221,26 +222,90 @@ export default function SearchPage() {
         }
       );
 
-      if (!response.ok) return [];
+      if (!searchResponse.ok) return [];
 
-      const data = await response.json();
-      return (data.items || []).map((item: any) => ({
-        id: `youtube-${item.id.videoId}`,
+      const searchData = await searchResponse.json();
+      const videoIds = (searchData.items || []).map((item: any) => item.id.videoId);
+
+      if (videoIds.length === 0) return [];
+
+      // Fetch video details to check embeddable status
+      const detailsResponse = await fetch(
+        `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,status&id=${videoIds.join(',')}&maxResults=20`,
+        {
+          headers: {
+            Authorization: `Bearer ${youtubeToken}`,
+          },
+        }
+      );
+
+      if (!detailsResponse.ok) return [];
+
+      const detailsData = await detailsResponse.json();
+
+      // Debug logging - show full status for debugging
+      console.log('📹 [YouTube] Total videos from API:', detailsData.items?.length || 0);
+      detailsData.items?.forEach((item: any, index: number) => {
+        console.log(`📹 [${index + 1}] "${item.snippet.title.substring(0, 40)}..."`, {
+          id: item.id,
+          embeddable: item.status?.embeddable,
+          publicStatsViewable: item.status?.publicStatsViewable,
+          license: item.status?.license,
+          regionRestriction: item.contentDetails?.regionRestriction,
+          contentRating: item.contentDetails?.contentRating
+        });
+      });
+
+      // Filter videos that can actually be embedded
+      // Unfortunately, YouTube's embeddable flag is unreliable for music videos
+      // Many report as embeddable but fail with error 150 due to undisclosed restrictions
+      const embeddableVideos = (detailsData.items || [])
+        .filter((item: any) => {
+          const embeddable = item.status?.embeddable === true;
+          const publicStats = item.status?.publicStatsViewable !== false;
+          const notAgeRestricted = !item.contentDetails?.contentRating?.ytRating;
+          const noRegionBlock = !item.contentDetails?.regionRestriction?.blocked;
+
+          const passes = embeddable && publicStats && notAgeRestricted && noRegionBlock;
+
+          if (!passes) {
+            console.log(`❌ Filtered out: "${item.snippet.title.substring(0, 40)}..." - embeddable:${embeddable}, publicStats:${publicStats}, notAge:${notAgeRestricted}, noRegion:${noRegionBlock}`);
+          }
+
+          return passes;
+        });
+
+      console.log('✅ [YouTube] Playable videos (after filtering):', embeddableVideos.length, 'out of', detailsData.items?.length);
+
+      return embeddableVideos.map((item: any) => ({
+        id: `youtube-${item.id}`,
         platform: 'youtube' as const,
         name: item.snippet.title,
-        uri: `https://www.youtube.com/watch?v=${item.id.videoId}`,
+        uri: item.id, // Just use video ID for cleaner URI
         artists: [{ name: item.snippet.channelTitle }],
         album: {
           name: item.snippet.channelTitle,
           images: item.snippet.thumbnails?.high ? [{ url: item.snippet.thumbnails.high.url }] : [],
         },
-        duration_ms: 0, // YouTube API doesn't provide duration in search, would need separate call
+        duration_ms: parseDuration(item.contentDetails?.duration || 'PT0S'),
         preview_url: null,
       }));
     } catch (error) {
       console.error('YouTube search error:', error);
       return [];
     }
+  };
+
+  // Helper function to parse ISO 8601 duration to milliseconds
+  const parseDuration = (isoDuration: string): number => {
+    const match = isoDuration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+    if (!match) return 0;
+
+    const hours = parseInt(match[1] || '0');
+    const minutes = parseInt(match[2] || '0');
+    const seconds = parseInt(match[3] || '0');
+
+    return (hours * 3600 + minutes * 60 + seconds) * 1000;
   };
 
   const handleSearch = async (query: string) => {
@@ -293,9 +358,25 @@ export default function SearchPage() {
           onPlatformsChange={setSelectedPlatforms}
         />
 
+        {/* YouTube Warning Banner */}
+        {tracks.length > 0 && tracks.some(t => t.platform === 'youtube') && (
+          <div className="mt-4 mb-4 p-4 bg-red-900/30 border border-red-500/50 rounded-lg">
+            <div className="flex items-start gap-3">
+              <span className="text-2xl">⚠️</span>
+              <div className="flex-1">
+                <h3 className="text-red-300 font-semibold mb-1">YouTube Playback Notice</h3>
+                <p className="text-red-200 text-sm">
+                  Some YouTube videos may not be playable due to licensing restrictions.
+                  If a video fails to play, you'll see a link to open it directly on YouTube.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {tracks.length > 0 && (
-          <TrackList 
-            tracks={tracks} 
+          <TrackList
+            tracks={tracks}
             onPlay={setCurrentTrack}
             currentTrack={currentTrack}
           />

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { IPlayerAdapter, Track, PlayerState } from '@/lib/player-adapters/IPlayerAdapter';
 import { SpotifyAdapter } from '@/lib/player-adapters/SpotifyAdapter';
 import { SoundCloudAdapter } from '@/lib/player-adapters/SoundCloudAdapter';
+import { YouTubeAdapter } from '@/lib/player-adapters/YouTubeAdapter';
 
 interface UnifiedMusicPlayerProps {
   track: Track;
@@ -50,8 +51,8 @@ export default function UnifiedMusicPlayer({
           adapter = new SoundCloudAdapter();
           break;
         case 'youtube':
-          // adapter = new YouTubeAdapter();
-          throw new Error('YouTube not yet implemented');
+          adapter = new YouTubeAdapter();
+          break;
         default:
           throw new Error(`Unsupported platform: ${track.platform}`);
       }
@@ -159,10 +160,46 @@ export default function UnifiedMusicPlayer({
   }
 
   if (error) {
+    // Extract YouTube URL from error message if present
+    const youtubeUrlMatch = error.match(/https:\/\/www\.youtube\.com\/watch\?v=([a-zA-Z0-9_-]+)/);
+    const youtubeUrl = youtubeUrlMatch ? youtubeUrlMatch[0] : null;
+    const errorMessage = youtubeUrl ? error.split('Open on YouTube:')[0].trim() : error;
+
     return (
-      <div className="fixed bottom-0 left-0 right-0 bg-black/90 backdrop-blur-lg border-t border-red-500/20 p-4">
-        <div className="max-w-6xl mx-auto text-center text-red-400">
-          ⚠️ {error}
+      <div className="fixed bottom-0 left-0 right-0 bg-black/90 backdrop-blur-lg border-t border-red-500/30 p-4">
+        <div className="max-w-6xl mx-auto">
+          <div className="flex items-center gap-4">
+            {/* Album Art */}
+            <img
+              src={track.album.images[0]?.url}
+              alt={track.album.name}
+              className="w-16 h-16 rounded shadow-lg opacity-50"
+            />
+
+            {/* Error Message */}
+            <div className="flex-1">
+              <div className="flex items-start gap-2">
+                <span className="text-red-400 text-xl">⚠️</span>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-white mb-1">{track.name}</h3>
+                  <p className="text-red-300 text-sm">{errorMessage}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Open on YouTube Button */}
+            {youtubeUrl && (
+              <a
+                href={youtubeUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-colors flex items-center gap-2"
+              >
+                <span>▶️</span>
+                Open on YouTube
+              </a>
+            )}
+          </div>
         </div>
       </div>
     );

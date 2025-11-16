@@ -45,14 +45,17 @@ export class SoundCloudAdapter implements IPlayerAdapter {
 
   private async initWidget(): Promise<boolean> {
     console.log('🎮 [SoundCloud] Initializing Widget...');
-    
-    // Create iframe widget
+
+    // Create iframe widget with a valid SoundCloud player URL
+    // We need to set src before initializing the widget
     const iframe = document.createElement('iframe');
     iframe.id = 'sc-widget';
     iframe.width = '100%';
     iframe.height = '166';
     iframe.allow = 'autoplay';
     iframe.style.display = 'none'; // Hidden, we'll use custom UI
+    // Set a placeholder URL - we'll load actual tracks via widget.load()
+    iframe.src = 'https://w.soundcloud.com/player/?url=';
     document.body.appendChild(iframe);
 
     const SC = (window as any).SC;
@@ -136,15 +139,18 @@ export class SoundCloudAdapter implements IPlayerAdapter {
   cleanup(): void {
     console.log('🧹 [SoundCloud] Cleaning up...');
     if (this.widget) {
-      this.widget.unbind(SC.Widget.Events.READY);
-      this.widget.unbind(SC.Widget.Events.PLAY);
-      this.widget.unbind(SC.Widget.Events.PAUSE);
-      this.widget.unbind(SC.Widget.Events.FINISH);
-      this.widget.unbind(SC.Widget.Events.PLAY_PROGRESS);
-      
+      const SC = (window as any).SC;
+      if (SC) {
+        this.widget.unbind(SC.Widget.Events.READY);
+        this.widget.unbind(SC.Widget.Events.PLAY);
+        this.widget.unbind(SC.Widget.Events.PAUSE);
+        this.widget.unbind(SC.Widget.Events.FINISH);
+        this.widget.unbind(SC.Widget.Events.PLAY_PROGRESS);
+      }
+
       const iframe = document.getElementById('sc-widget');
       if (iframe) iframe.remove();
-      
+
       this.widget = null;
     }
   }
