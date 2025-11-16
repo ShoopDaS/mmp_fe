@@ -119,8 +119,9 @@ export default function SearchPage() {
     if (!soundcloudToken || !selectedPlatforms.soundcloud) return [];
 
     try {
+      // SoundCloud API v2 search endpoint
       const response = await fetch(
-        `https://api.soundcloud.com/tracks?q=${encodeURIComponent(query)}&limit=20`,
+        `https://api-v2.soundcloud.com/search/tracks?q=${encodeURIComponent(query)}&limit=20`,
         {
           headers: {
             Authorization: `OAuth ${soundcloudToken}`,
@@ -128,22 +129,38 @@ export default function SearchPage() {
         }
       );
 
-      if (!response.ok) return [];
+      if (!response.ok) {
+        console.error('SoundCloud API error:', response.status, response.statusText);
+        return [];
+      }
 
       const data = await response.json();
-      return data.map((item: any) => ({
-        id: `soundcloud-${item.id}`,
-        platform: 'soundcloud' as const,
-        name: item.title,
-        uri: item.permalink_url,
-        artists: [{ name: item.user.username }],
-        album: {
-          name: item.user.username,
-          images: item.artwork_url ? [{ url: item.artwork_url }] : [],
-        },
-        duration_ms: item.duration,
-        preview_url: item.stream_url,
-      }));
+
+      // API v2 returns { collection: [...], next_href: ... }
+      const tracks = data.collection || [];
+
+      return tracks
+        .filter((item: any) => item && item.id) // Filter out invalid items
+        .map((item: any) => {
+          // Get the best quality artwork
+          const artworkUrl = item.artwork_url
+            ? item.artwork_url.replace('-large', '-t500x500') // Get higher quality
+            : item.user?.avatar_url || '';
+
+          return {
+            id: `soundcloud-${item.id}`,
+            platform: 'soundcloud' as const,
+            name: item.title || 'Unknown Track',
+            uri: item.permalink_url || '',
+            artists: [{ name: item.user?.username || 'Unknown Artist' }],
+            album: {
+              name: item.user?.username || 'Unknown Artist',
+              images: artworkUrl ? [{ url: artworkUrl }] : [],
+            },
+            duration_ms: item.duration || 0, // Already in milliseconds in v2
+            preview_url: item.stream_url || null,
+          };
+        });
     } catch (error) {
       console.error('SoundCloud search error:', error);
       return [];
