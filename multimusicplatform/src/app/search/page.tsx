@@ -23,6 +23,50 @@ interface Track {
   duration_ms: number;  // 👈 ADD THIS (needed for progress bar)
   preview_url: string | null;
 }
+
+interface StoredToken {
+  accessToken: string;
+  expiresAt: number; // Unix timestamp in milliseconds
+}
+
+// Helper functions for token management
+const getStoredToken = (platform: string): string | null => {
+  if (typeof window === 'undefined') return null;
+
+  const stored = localStorage.getItem(`${platform}_token`);
+  if (!stored) return null;
+
+  try {
+    const tokenData: StoredToken = JSON.parse(stored);
+    const now = Date.now();
+
+    // Check if token is expired (with 5-minute buffer for safety)
+    if (tokenData.expiresAt <= now) {
+      localStorage.removeItem(`${platform}_token`);
+      return null;
+    }
+
+    return tokenData.accessToken;
+  } catch {
+    localStorage.removeItem(`${platform}_token`);
+    return null;
+  }
+};
+
+const storeToken = (platform: string, accessToken: string, expiresIn: number): void => {
+  if (typeof window === 'undefined') return;
+
+  // Convert expiresIn (seconds) to expiration timestamp (milliseconds)
+  // Subtract 5 minutes (300 seconds) as a safety buffer
+  const expiresAt = Date.now() + ((expiresIn - 300) * 1000);
+
+  const tokenData: StoredToken = {
+    accessToken,
+    expiresAt,
+  };
+
+  localStorage.setItem(`${platform}_token`, JSON.stringify(tokenData));
+};
 export default function SearchPage() {
   const router = useRouter();
   const { isLoading: authLoading, isAuthenticated } = useAuth();
@@ -45,37 +89,66 @@ export default function SearchPage() {
     }
 
     if (isAuthenticated) {
+      // First, try to load tokens from localStorage
+      const spotifyStored = getStoredToken('spotify');
+      const soundcloudStored = getStoredToken('soundcloud');
+      const youtubeStored = getStoredToken('youtube');
+
+      if (spotifyStored) setSpotifyToken(spotifyStored);
+      if (soundcloudStored) setSoundcloudToken(soundcloudStored);
+      if (youtubeStored) setYoutubeToken(youtubeStored);
+
+      // Then refresh only if tokens are missing or expired
       loadPlatformTokens();
     }
   }, [authLoading, isAuthenticated, router]);
 
   const loadPlatformTokens = async () => {
-    // Load tokens for all platforms (silently fail if not connected)
-    try {
-      const spotifyResponse = await apiClient.spotifyRefresh();
-      if (spotifyResponse.data?.accessToken) {
-        setSpotifyToken(spotifyResponse.data.accessToken);
+    // Load tokens for all platforms (only refresh if expired or missing)
+
+    // Spotify
+    const spotifyStored = getStoredToken('spotify');
+    if (!spotifyStored) {
+      try {
+        console.log('Refreshing Spotify token...');
+        const spotifyResponse = await apiClient.spotifyRefresh();
+        if (spotifyResponse.data?.accessToken && spotifyResponse.data?.expiresIn) {
+          setSpotifyToken(spotifyResponse.data.accessToken);
+          storeToken('spotify', spotifyResponse.data.accessToken, spotifyResponse.data.expiresIn);
+        }
+      } catch (error) {
+        console.log('Spotify not connected');
       }
-    } catch (error) {
-      console.log('Spotify not connected');
     }
 
-    try {
-      const soundcloudResponse = await apiClient.soundcloudRefresh();
-      if (soundcloudResponse.data?.accessToken) {
-        setSoundcloudToken(soundcloudResponse.data.accessToken);
+    // SoundCloud
+    const soundcloudStored = getStoredToken('soundcloud');
+    if (!soundcloudStored) {
+      try {
+        console.log('Refreshing SoundCloud token...');
+        const soundcloudResponse = await apiClient.soundcloudRefresh();
+        if (soundcloudResponse.data?.accessToken && soundcloudResponse.data?.expiresIn) {
+          setSoundcloudToken(soundcloudResponse.data.accessToken);
+          storeToken('soundcloud', soundcloudResponse.data.accessToken, soundcloudResponse.data.expiresIn);
+        }
+      } catch (error) {
+        console.log('SoundCloud not connected');
       }
-    } catch (error) {
-      console.log('SoundCloud not connected');
     }
 
-    try {
-      const youtubeResponse = await apiClient.youtubeRefresh();
-      if (youtubeResponse.data?.accessToken) {
-        setYoutubeToken(youtubeResponse.data.accessToken);
+    // YouTube
+    const youtubeStored = getStoredToken('youtube');
+    if (!youtubeStored) {
+      try {
+        console.log('Refreshing YouTube token...');
+        const youtubeResponse = await apiClient.youtubeRefresh();
+        if (youtubeResponse.data?.accessToken && youtubeResponse.data?.expiresIn) {
+          setYoutubeToken(youtubeResponse.data.accessToken);
+          storeToken('youtube', youtubeResponse.data.accessToken, youtubeResponse.data.expiresIn);
+        }
+      } catch (error) {
+        console.log('YouTube not connected');
       }
-    } catch (error) {
-      console.log('YouTube not connected');
     }
   };
 
