@@ -121,14 +121,6 @@ class ApiClient {
     );
   }
 
-  async soundcloudSearch(query: string) {
-    return this.request<{ tracks: any[] }>(
-      `/platforms/soundcloud/search?q=${encodeURIComponent(query)}`,
-      { method: 'GET' },
-      true
-    );
-  }
-
   // User endpoints
   async getUserProfile() {
     return this.request('/user/profile', {}, true);

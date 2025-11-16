@@ -116,19 +116,51 @@ export default function SearchPage() {
   };
 
   const searchSoundCloud = async (query: string): Promise<Track[]> => {
-    if (!selectedPlatforms.soundcloud) return [];
+    if (!soundcloudToken || !selectedPlatforms.soundcloud) return [];
 
     try {
-      // Use backend proxy to avoid CORS issues
-      const response = await apiClient.soundcloudSearch(query);
+      // SoundCloud API v2 search endpoint
+      const response = await fetch(
+        `https://api-v2.soundcloud.com/search/tracks?q=${encodeURIComponent(query)}&limit=20`,
+        {
+          headers: {
+            Authorization: `OAuth ${soundcloudToken}`,
+          },
+        }
+      );
 
-      if (response.error) {
-        console.error('SoundCloud search error:', response.error);
+      if (!response.ok) {
+        console.error('SoundCloud API error:', response.status, response.statusText);
         return [];
       }
 
-      // Backend returns normalized tracks
-      return response.data?.tracks || [];
+      const data = await response.json();
+
+      // API v2 returns { collection: [...], next_href: ... }
+      const tracks = data.collection || [];
+
+      return tracks
+        .filter((item: any) => item && item.id) // Filter out invalid items
+        .map((item: any) => {
+          // Get the best quality artwork
+          const artworkUrl = item.artwork_url
+            ? item.artwork_url.replace('-large', '-t500x500') // Get higher quality
+            : item.user?.avatar_url || '';
+
+          return {
+            id: `soundcloud-${item.id}`,
+            platform: 'soundcloud' as const,
+            name: item.title || 'Unknown Track',
+            uri: item.permalink_url || '',
+            artists: [{ name: item.user?.username || 'Unknown Artist' }],
+            album: {
+              name: item.user?.username || 'Unknown Artist',
+              images: artworkUrl ? [{ url: artworkUrl }] : [],
+            },
+            duration_ms: item.duration || 0, // Already in milliseconds in v2
+            preview_url: item.stream_url || null,
+          };
+        });
     } catch (error) {
       console.error('SoundCloud search error:', error);
       return [];
