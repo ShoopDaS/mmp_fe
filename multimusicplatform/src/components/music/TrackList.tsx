@@ -22,16 +22,16 @@ interface TrackListProps {
 export default function TrackList({ tracks, onPlay, currentTrack }: TrackListProps) {
   const getPlatformColors = (platform: Track['platform'], isPlaying: boolean) => {
     if (isPlaying) {
-      return 'bg-purple-600 border-l-4';
+      return 'bg-purple-600 border-l-4 border-purple-400';
     }
 
     switch (platform) {
       case 'spotify':
-        return 'bg-green-900/20 hover:bg-green-900/30 border-l-4 border-green-500';
+        return 'bg-green-600/40 hover:bg-green-600/60 border-l-4 border-green-400';
       case 'soundcloud':
-        return 'bg-orange-900/20 hover:bg-orange-900/30 border-l-4 border-orange-500';
+        return 'bg-orange-600/40 hover:bg-orange-600/60 border-l-4 border-orange-400';
       case 'youtube':
-        return 'bg-red-900/20 hover:bg-red-900/30 border-l-4 border-red-500';
+        return 'bg-red-600/40 hover:bg-red-600/60 border-l-4 border-red-400';
       default:
         return 'bg-white/10 hover:bg-white/20';
     }
