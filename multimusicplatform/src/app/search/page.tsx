@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/lib/api';
 import Header from '@/components/layout/Header';
 import SearchBar from '@/components/music/SearchBar';
 import TrackList from '@/components/music/TrackList';
-import UnifiedMusicPlayer from '@/components/music/UnifiedMusicPlayer';
+import UnifiedMusicPlayer, { UnifiedMusicPlayerRef } from '@/components/music/UnifiedMusicPlayer';
 import { PlatformState } from '@/components/music/PlatformSelector';
 
 interface Track {
@@ -76,6 +76,8 @@ export default function SearchPage() {
   const [tracks, setTracks] = useState<Track[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const playerRef = useRef<UnifiedMusicPlayerRef>(null);
   const [selectedPlatforms, setSelectedPlatforms] = useState<PlatformState>({
     spotify: true,
     soundcloud: false, // Default OFF as requested
@@ -336,6 +338,14 @@ export default function SearchPage() {
     }
   };
 
+  const handleTogglePlay = () => {
+    playerRef.current?.togglePlay();
+  };
+
+  const handlePlayerStateChange = (playing: boolean) => {
+    setIsPlaying(playing);
+  };
+
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-900 via-blue-900 to-black">
@@ -378,7 +388,9 @@ export default function SearchPage() {
           <TrackList
             tracks={tracks}
             onPlay={setCurrentTrack}
+            onTogglePlay={handleTogglePlay}
             currentTrack={currentTrack}
+            isPlaying={isPlaying}
           />
         )}
 
@@ -392,6 +404,7 @@ export default function SearchPage() {
       {/* Fixed player at bottom */}
       {currentTrack && (
         <UnifiedMusicPlayer
+          ref={playerRef}
           track={currentTrack}
           token={
             currentTrack.platform === 'spotify'
@@ -400,6 +413,7 @@ export default function SearchPage() {
               ? soundcloudToken || ''
               : youtubeToken || ''
           }
+          onPlayerStateChange={handlePlayerStateChange}
         />
       )}
     </div>

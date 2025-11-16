@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
 import { IPlayerAdapter, Track, PlayerState } from '@/lib/player-adapters/IPlayerAdapter';
 import { SpotifyAdapter } from '@/lib/player-adapters/SpotifyAdapter';
 import { SoundCloudAdapter } from '@/lib/player-adapters/SoundCloudAdapter';
@@ -10,13 +10,19 @@ interface UnifiedMusicPlayerProps {
   track: Track;
   token: string; // Platform-specific token
   onTrackEnd?: () => void; // Callback for next track
+  onPlayerStateChange?: (isPlaying: boolean) => void; // Callback for play/pause state changes
 }
 
-export default function UnifiedMusicPlayer({ 
-  track, 
+export interface UnifiedMusicPlayerRef {
+  togglePlay: () => void;
+}
+
+const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerProps>(({
+  track,
   token,
-  onTrackEnd 
-}: UnifiedMusicPlayerProps) {
+  onTrackEnd,
+  onPlayerStateChange
+}, ref) => {
   const [playerState, setPlayerState] = useState<PlayerState>({
     isPlaying: false,
     currentTime: 0,
@@ -104,16 +110,34 @@ export default function UnifiedMusicPlayer({
     isLoopingRef.current = playerState.isLooping;
   }, [playerState.isLooping]);
 
-  // Play track when it changes
+  // Play track when it changes and clear any previous errors
   useEffect(() => {
+    // Clear error state when track changes
+    setError('');
+
     if (adapterRef.current && playerState.canPlay) {
-      adapterRef.current.play(track);
+      adapterRef.current.play(track).catch((err) => {
+        console.error('Failed to play track:', err);
+        setError(err.message);
+      });
     }
-  }, [track, playerState.canPlay]);
+  }, [track.id, playerState.canPlay]);
 
   const togglePlay = () => {
     adapterRef.current?.togglePlay();
   };
+
+  // Expose togglePlay method to parent via ref
+  useImperativeHandle(ref, () => ({
+    togglePlay
+  }));
+
+  // Notify parent of play/pause state changes
+  useEffect(() => {
+    if (onPlayerStateChange) {
+      onPlayerStateChange(playerState.isPlaying);
+    }
+  }, [playerState.isPlaying, onPlayerStateChange]);
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newPosition = Number(e.target.value);
@@ -323,4 +347,8 @@ export default function UnifiedMusicPlayer({
       </div>
     </div>
   );
-}
+});
+
+UnifiedMusicPlayer.displayName = 'UnifiedMusicPlayer';
+
+export default UnifiedMusicPlayer;
