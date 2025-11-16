@@ -41,32 +41,37 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
 
   // Initialize adapter based on platform - reinitialize when platform changes
   useEffect(() => {
-    // If platform hasn't changed, don't reinitialize
+    // If platform hasn't changed and adapter exists, don't reinitialize
     if (currentPlatformRef.current === track.platform && adapterRef.current) {
+      // But make sure adapter is not in cleanup state
       return;
     }
 
-    // Clear error and reset player state when switching platforms
-    setError('');
-    setPlayerState({
-      isPlaying: false,
-      currentTime: 0,
-      duration: 0,
-      volume: 0.8,
-      isLooping: false,
-      isShuffle: false,
-      canPlay: false,
-    });
-
     const initAdapter = async () => {
-      // Cleanup old adapter if platform changed
-      if (adapterRef.current && currentPlatformRef.current !== track.platform) {
+      // Always pause and cleanup existing adapter before creating new one
+      if (adapterRef.current) {
         console.log('🧹 Cleaning up old adapter for:', currentPlatformRef.current);
-        // Pause before cleanup to stop playback
-        await adapterRef.current.pause();
+        try {
+          // Pause before cleanup to stop playback (awaited to ensure it completes)
+          await adapterRef.current.pause();
+        } catch (err) {
+          console.log('Error pausing old adapter:', err);
+        }
         adapterRef.current.cleanup();
         adapterRef.current = null;
       }
+
+      // Clear error and reset player state when creating new adapter
+      setError('');
+      setPlayerState({
+        isPlaying: false,
+        currentTime: 0,
+        duration: 0,
+        volume: 0.8,
+        isLooping: false,
+        isShuffle: false,
+        canPlay: false,
+      });
 
       console.log('🎵 Initializing player for platform:', track.platform);
       currentPlatformRef.current = track.platform;
@@ -129,7 +134,9 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
           // Ignore errors during cleanup
         });
         adapterRef.current.cleanup();
-        adapterRef.current = null;
+        // Note: Don't set to null here as initAdapter will handle cleanup
+        // Setting to null here causes a race condition where the new effect
+        // can't access the adapter to pause it
       }
     };
   }, [track.platform, token]);
