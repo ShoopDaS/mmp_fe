@@ -9,6 +9,8 @@ export class YouTubeAdapter implements IPlayerAdapter {
   private token: string = '';
   private currentTrack: Track | null = null;
   private progressInterval: NodeJS.Timeout | null = null;
+  private apiReady: boolean = false;
+  private playerReady: boolean = false;
 
   private state: PlayerState = {
     isPlaying: false,
@@ -29,7 +31,7 @@ export class YouTubeAdapter implements IPlayerAdapter {
     console.log('🎵 [YouTube] Initializing...');
 
     return new Promise((resolve) => {
-      // Load YouTube IFrame API
+      // Load YouTube IFrame API only, don't create player yet
       if (!(window as any).YT) {
         const tag = document.createElement('script');
         tag.src = 'https://www.youtube.com/iframe_api';
@@ -39,31 +41,46 @@ export class YouTubeAdapter implements IPlayerAdapter {
         // YouTube API calls this when ready
         (window as any).onYouTubeIframeAPIReady = () => {
           console.log('✅ [YouTube] API Ready');
-          this.initPlayer().then(resolve);
+          this.apiReady = true;
+          this.state.canPlay = true;
+          this.notifyStateChange();
+          resolve(true);
         };
       } else {
-        this.initPlayer().then(resolve);
+        console.log('✅ [YouTube] API Already Loaded');
+        this.apiReady = true;
+        this.state.canPlay = true;
+        this.notifyStateChange();
+        resolve(true);
       }
     });
   }
 
-  private async initPlayer(): Promise<boolean> {
-    console.log('🎮 [YouTube] Initializing Player...');
+  private async ensurePlayer(videoId: string): Promise<void> {
+    if (this.player && this.playerReady) {
+      return; // Player already exists
+    }
 
-    // Create container for player
-    const container = document.createElement('div');
-    container.id = 'yt-player';
-    container.style.display = 'none'; // Hidden, we'll use custom UI
-    document.body.appendChild(container);
+    console.log('🎮 [YouTube] Creating Player...');
 
-    return new Promise((resolve) => {
+    // Create container for player if it doesn't exist
+    let container = document.getElementById('yt-player');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'yt-player';
+      container.style.display = 'none'; // Hidden, we'll use custom UI
+      document.body.appendChild(container);
+    }
+
+    return new Promise((resolve, reject) => {
       const YT = (window as any).YT;
 
       this.player = new YT.Player('yt-player', {
         height: '360',
         width: '640',
+        videoId: videoId, // Load video immediately
         playerVars: {
-          autoplay: 0,
+          autoplay: 1, // Auto-play when ready
           controls: 0, // Hide default controls
           disablekb: 1,
           fs: 0,
@@ -73,16 +90,16 @@ export class YouTubeAdapter implements IPlayerAdapter {
         events: {
           onReady: (event: any) => {
             console.log('✅ [YouTube] Player Ready');
-            this.state.canPlay = true;
+            this.playerReady = true;
             this.player.setVolume(this.state.volume * 100);
-            this.notifyStateChange();
-            resolve(true);
+            resolve();
           },
           onStateChange: (event: any) => {
             this.handleStateChange(event.data);
           },
           onError: (event: any) => {
             this.handleError(event.data);
+            reject(new Error('YouTube player error'));
           },
         },
       });
@@ -174,8 +191,14 @@ export class YouTubeAdapter implements IPlayerAdapter {
       throw new Error('Invalid YouTube video ID');
     }
 
-    // Load and play video
-    await this.player.loadVideoById(videoId);
+    // Ensure player exists (lazy initialization)
+    if (!this.player || !this.playerReady) {
+      await this.ensurePlayer(videoId);
+    } else {
+      // Player already exists, just load new video
+      await this.player.loadVideoById(videoId);
+    }
+
     this.state.currentTime = 0;
     this.notifyStateChange();
   }
@@ -203,14 +226,17 @@ export class YouTubeAdapter implements IPlayerAdapter {
   }
 
   async pause(): Promise<void> {
+    if (!this.player || !this.playerReady) return;
     await this.player.pauseVideo();
   }
 
   async resume(): Promise<void> {
+    if (!this.player || !this.playerReady) return;
     await this.player.playVideo();
   }
 
   async togglePlay(): Promise<void> {
+    if (!this.player || !this.playerReady) return;
     if (this.state.isPlaying) {
       await this.pause();
     } else {
@@ -219,6 +245,7 @@ export class YouTubeAdapter implements IPlayerAdapter {
   }
 
   async seek(positionMs: number): Promise<void> {
+    if (!this.player || !this.playerReady) return;
     console.log('⏩ [YouTube] Seeking to:', positionMs);
     const positionSeconds = positionMs / 1000;
     await this.player.seekTo(positionSeconds, true);
@@ -228,7 +255,9 @@ export class YouTubeAdapter implements IPlayerAdapter {
 
   async setVolume(volume: number): Promise<void> {
     this.state.volume = Math.max(0, Math.min(1, volume));
-    await this.player.setVolume(this.state.volume * 100); // YouTube uses 0-100
+    if (this.player && this.playerReady) {
+      await this.player.setVolume(this.state.volume * 100); // YouTube uses 0-100
+    }
     this.notifyStateChange();
   }
 
