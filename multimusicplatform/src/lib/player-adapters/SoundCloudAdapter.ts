@@ -136,15 +136,18 @@ export class SoundCloudAdapter implements IPlayerAdapter {
   cleanup(): void {
     console.log('🧹 [SoundCloud] Cleaning up...');
     if (this.widget) {
-      this.widget.unbind(SC.Widget.Events.READY);
-      this.widget.unbind(SC.Widget.Events.PLAY);
-      this.widget.unbind(SC.Widget.Events.PAUSE);
-      this.widget.unbind(SC.Widget.Events.FINISH);
-      this.widget.unbind(SC.Widget.Events.PLAY_PROGRESS);
-      
+      const SC = (window as any).SC;
+      if (SC) {
+        this.widget.unbind(SC.Widget.Events.READY);
+        this.widget.unbind(SC.Widget.Events.PLAY);
+        this.widget.unbind(SC.Widget.Events.PAUSE);
+        this.widget.unbind(SC.Widget.Events.FINISH);
+        this.widget.unbind(SC.Widget.Events.PLAY_PROGRESS);
+      }
+
       const iframe = document.getElementById('sc-widget');
       if (iframe) iframe.remove();
-      
+
       this.widget = null;
     }
   }

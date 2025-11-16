@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { IPlayerAdapter, Track, PlayerState } from '@/lib/player-adapters/IPlayerAdapter';
 import { SpotifyAdapter } from '@/lib/player-adapters/SpotifyAdapter';
 import { SoundCloudAdapter } from '@/lib/player-adapters/SoundCloudAdapter';
+import { YouTubeAdapter } from '@/lib/player-adapters/YouTubeAdapter';
 
 interface UnifiedMusicPlayerProps {
   track: Track;
@@ -50,8 +51,8 @@ export default function UnifiedMusicPlayer({
           adapter = new SoundCloudAdapter();
           break;
         case 'youtube':
-          // adapter = new YouTubeAdapter();
-          throw new Error('YouTube not yet implemented');
+          adapter = new YouTubeAdapter();
+          break;
         default:
           throw new Error(`Unsupported platform: ${track.platform}`);
       }
