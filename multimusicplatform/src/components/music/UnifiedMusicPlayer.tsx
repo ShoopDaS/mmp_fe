@@ -8,9 +8,9 @@ import { YouTubeAdapter } from '@/lib/player-adapters/YouTubeAdapter';
 
 interface UnifiedMusicPlayerProps {
   track: Track;
-  token: string; // Platform-specific token
-  onTrackEnd?: () => void; // Callback for next track
-  onPlayerStateChange?: (isPlaying: boolean) => void; // Callback for play/pause state changes
+  token: string;
+  onTrackEnd?: () => void;
+  onPlayerStateChange?: (isPlaying: boolean) => void;
 }
 
 export interface UnifiedMusicPlayerRef {
@@ -35,6 +35,10 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
   
   const [error, setError] = useState<string>('');
   const [showVolume, setShowVolume] = useState(false);
+  
+  // 🚨 NEW FIX: State to trigger the play effect when the ref is officially assigned
+  const [isAdapterReady, setIsAdapterReady] = useState(false);
+  
   const adapterRef = useRef<IPlayerAdapter | null>(null);
   const currentPlatformRef = useRef<string | null>(null);
   const isLoopingRef = useRef(false);
@@ -44,29 +48,25 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
     let isCancelled = false;
 
     const initAdapter = async () => {
-      // Always pause and cleanup existing adapter before creating new one
       if (adapterRef.current) {
         const oldPlatform = currentPlatformRef.current;
         const needsCleanup = oldPlatform !== track.platform;
 
         if (needsCleanup) {
+          setIsAdapterReady(false); // 👈 Lock the play effect
           console.log('🧹 Cleaning up old adapter for:', oldPlatform);
           try {
-            // Pause before cleanup to stop playback (awaited to ensure it completes)
             await adapterRef.current.pause();
-            console.log('✅ Old adapter paused successfully');
-          } catch (err) {
-            console.log('Error pausing old adapter:', err);
-          }
+          } catch (err) {}
           adapterRef.current.cleanup();
           adapterRef.current = null;
         } else {
-          // Same platform, no need to reinitialize
-          return;
+          return; // Same platform, exit early and keep playing
         }
+      } else {
+        setIsAdapterReady(false); // First load
       }
 
-      // Clear error and reset player state when creating new adapter
       setError('');
       setPlayerState({
         isPlaying: false,
@@ -97,7 +97,6 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
           throw new Error(`Unsupported platform: ${track.platform}`);
       }
 
-      // Set up callbacks
       adapter.onStateChange((state) => {
         if (!isCancelled) setPlayerState(state);
       });
@@ -105,10 +104,8 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
       adapter.onTrackEnd(() => {
         if (isCancelled) return;
         if (isLoopingRef.current) {
-          // Replay the same track
           adapter.play(track);
         } else if (onTrackEnd) {
-          // Move to next track
           onTrackEnd();
         }
       });
@@ -120,10 +117,8 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
         }
       });
 
-      // Initialize (Async call)
       const success = await adapter.initialize(token);
       
-      // 🚨 CRITICAL FIX: Check if user switched platforms during the await
       if (isCancelled) {
         console.log('🛑 Aborting initialization: platform changed');
         adapter.cleanup();
@@ -136,6 +131,7 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
       }
 
       adapterRef.current = adapter;
+      setIsAdapterReady(true); // 👈 Unlock the play effect (Triggers re-render!)
     };
 
     initAdapter().catch((err) => {
@@ -146,16 +142,13 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
     });
 
     return () => {
-      // Mark as cancelled so any pending initialization aborts
       isCancelled = true;
     };
   }, [track.platform, token]);
 
-  // Cleanup on component unmount only
   useEffect(() => {
     return () => {
       if (adapterRef.current) {
-        console.log('🧹 Component unmounting, cleaning up adapter');
         adapterRef.current.pause().catch(() => {});
         adapterRef.current.cleanup();
         adapterRef.current = null;
@@ -163,20 +156,19 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
     };
   }, []);
 
-  // Sync loop ref with state
   useEffect(() => {
     isLoopingRef.current = playerState.isLooping;
   }, [playerState.isLooping]);
 
   // Play track when it changes and clear any previous errors
   useEffect(() => {
-    let isPlayCancelled = false; // 🚨 Track rapid song switching
+    let isPlayCancelled = false;
     setError('');
 
-    // 🚨 THE FIX: Ensure the adapter we are about to use actually matches the track's platform.
     const isCorrectPlatform = currentPlatformRef.current === track.platform;
 
-    if (isCorrectPlatform && adapterRef.current && playerState.canPlay) {
+    // 🚨 NEW FIX: Depend on isAdapterReady so React knows to fire this AFTER the ref updates
+    if (isCorrectPlatform && isAdapterReady && adapterRef.current && playerState.canPlay) {
       adapterRef.current.play(track).catch((err) => {
         if (!isPlayCancelled) {
           console.error('Failed to play track:', err);
@@ -186,20 +178,18 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
     }
 
     return () => {
-      isPlayCancelled = true; // Invalidate previous play request if track changes
+      isPlayCancelled = true;
     };
-  }, [track.id, playerState.canPlay, track.platform]);
+  }, [track.id, playerState.canPlay, track.platform, isAdapterReady]);
 
   const togglePlay = () => {
     adapterRef.current?.togglePlay();
   };
 
-  // Expose togglePlay method to parent via ref
   useImperativeHandle(ref, () => ({
     togglePlay
   }));
 
-  // Notify parent of play/pause state changes
   useEffect(() => {
     if (onPlayerStateChange) {
       onPlayerStateChange(playerState.isPlaying);
@@ -251,7 +241,6 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
   }
 
   if (error) {
-    // Extract YouTube URL from error message if present
     const youtubeUrlMatch = error.match(/https:\/\/www\.youtube\.com\/watch\?v=([a-zA-Z0-9_-]+)/);
     const youtubeUrl = youtubeUrlMatch ? youtubeUrlMatch[0] : null;
     const errorMessage = youtubeUrl ? error.split('Open on YouTube:')[0].trim() : error;
