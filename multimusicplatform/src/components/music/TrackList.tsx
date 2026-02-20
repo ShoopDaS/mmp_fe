@@ -9,6 +9,7 @@ interface Track {
     name: string;
     images: { url: string }[];
   };
+  duration_ms: number;
   preview_url: string | null;
   platform: 'spotify' | 'soundcloud' | 'youtube';
 }
@@ -16,12 +17,14 @@ interface Track {
 interface TrackListProps {
   tracks: Track[];
   onPlay: (track: Track) => void;
+  onTogglePlay?: () => void; // For pausing/resuming the current track
   currentTrack: Track | null;
+  isPlaying?: boolean; // Whether the current track is playing
 }
 
-export default function TrackList({ tracks, onPlay, currentTrack }: TrackListProps) {
-  const getPlatformColors = (platform: Track['platform'], isPlaying: boolean) => {
-    if (isPlaying) {
+export default function TrackList({ tracks, onPlay, onTogglePlay, currentTrack, isPlaying = false }: TrackListProps) {
+  const getPlatformColors = (platform: Track['platform'], isCurrentTrack: boolean) => {
+    if (isCurrentTrack) {
       return 'bg-purple-600 border-l-4 border-purple-400';
     }
 
@@ -37,11 +40,23 @@ export default function TrackList({ tracks, onPlay, currentTrack }: TrackListPro
     }
   };
 
+  const handleTrackClick = (track: Track) => {
+    const isCurrentTrack = currentTrack?.id === track.id;
+
+    if (isCurrentTrack && onTogglePlay) {
+      // If clicking the current track, toggle play/pause
+      onTogglePlay();
+    } else {
+      // Otherwise, play the new track
+      onPlay(track);
+    }
+  };
+
   return (
     <div>
       <div className="space-y-2">
         {tracks.map((track) => {
-          const isPlaying = currentTrack?.id === track.id;
+          const isCurrentTrack = currentTrack?.id === track.id;
           const albumImage = track.album.images[0]?.url || '';
 
           return (
@@ -49,10 +64,10 @@ export default function TrackList({ tracks, onPlay, currentTrack }: TrackListPro
               key={track.id}
               className={`
                 flex items-center gap-4 p-4 rounded-lg transition-all cursor-pointer
-                ${getPlatformColors(track.platform, isPlaying)}
+                ${getPlatformColors(track.platform, isCurrentTrack)}
                 backdrop-blur-sm
               `}
-              onClick={() => onPlay(track)}
+              onClick={() => handleTrackClick(track)}
             >
               {/* Album art */}
               {albumImage && (
@@ -72,9 +87,9 @@ export default function TrackList({ tracks, onPlay, currentTrack }: TrackListPro
                 <p className="text-xs text-gray-400 truncate">{track.album.name}</p>
               </div>
 
-              {/* Play indicator */}
+              {/* Play/Pause indicator */}
               <div className="text-2xl">
-                {isPlaying ? '⏸️' : '▶️'}
+                {isCurrentTrack && isPlaying ? '⏸️' : '▶️'}
               </div>
             </div>
           );
