@@ -12,7 +12,7 @@ import { PlatformState } from '@/components/music/PlatformSelector';
 
 interface Track {
   id: string;
-  platform: 'spotify' | 'soundcloud' | 'youtube';  // 👈 ADD THIS
+  platform: 'spotify' | 'soundcloud' | 'youtube';
   name: string;
   uri: string;
   artists: { name: string }[];
@@ -20,7 +20,7 @@ interface Track {
     name: string;
     images: { url: string }[];
   };
-  duration_ms: number;  // 👈 ADD THIS (needed for progress bar)
+  duration_ms: number;
   preview_url: string | null;
 }
 
@@ -259,8 +259,6 @@ export default function SearchPage() {
       });
 
       // Filter videos that can actually be embedded
-      // Unfortunately, YouTube's embeddable flag is unreliable for music videos
-      // Many report as embeddable but fail with error 150 due to undisclosed restrictions
       const embeddableVideos = (detailsData.items || [])
         .filter((item: any) => {
           const embeddable = item.status?.embeddable === true;
@@ -331,6 +329,8 @@ export default function SearchPage() {
       // Combine and set results
       const allTracks = [...spotifyTracks, ...soundcloudTracks, ...youtubeTracks];
       setTracks(allTracks);
+
+
     } catch (error) {
       console.error('Search error:', error);
     } finally {

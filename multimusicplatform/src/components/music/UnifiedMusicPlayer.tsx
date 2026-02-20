@@ -49,9 +49,18 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
     currentTrackRef.current = track;
   }, [track]);
 
+  // 🚨 FIX: Clear error whenever the track changes, not just on platform switch.
+  // Without this, switching from one broken SoundCloud track to another SoundCloud
+  // track would keep the old error displayed because effect #1 only runs on
+  // platform change, not track change.
+  useEffect(() => {
+    setError('');
+  }, [track.id]);
+
   // 1. Manage Platform Switching & Initialization
   useEffect(() => {
     const platform = track.platform;
+    let isCancelled = false; // 🚨 FIX: Per-invocation cancellation flag
 
     // Pause the previously active platform if we are switching
     if (activePlatformRef.current && activePlatformRef.current !== platform) {
@@ -70,6 +79,7 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
       if (adaptersMap.current[platform]) {
         console.log(`♻️ Reusing cached adapter for: ${platform}`);
         const existingAdapter = adaptersMap.current[platform];
+        if (isCancelled) return; // 🚨 GUARD
         setPlayerState(existingAdapter.getState());
         setReadyPlatform(platform); // Trigger the play effect
         return;
@@ -115,8 +125,11 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
 
       const success = await newAdapter.initialize(token);
 
-      // Guard: Did user switch songs while we were initializing?
-      if (activePlatformRef.current !== platform) return;
+      // 🚨 FIX: Check BOTH the platform guard AND the cancellation flag.
+      // The platform guard alone fails when Strict Mode re-mounts the same platform:
+      // mount #1's stale async closure sees platform === activePlatformRef.current
+      // (both are 'soundcloud') and proceeds to call setError(), corrupting mount #2.
+      if (isCancelled || activePlatformRef.current !== platform) return;
 
       if (success) {
         setReadyPlatform(platform); // Triggers play effect
@@ -127,6 +140,9 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
 
     setupAdapter();
 
+    return () => {
+      isCancelled = true; // 🚨 FIX: Cancel this invocation's async work on cleanup
+    };
   }, [track.platform, token]);
 
   // 2. The Play Effect (Waits for platform to be officially "ready")

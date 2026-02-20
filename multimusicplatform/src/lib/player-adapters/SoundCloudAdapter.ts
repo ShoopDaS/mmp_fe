@@ -39,6 +39,11 @@ export class SoundCloudAdapter implements IPlayerAdapter {
           console.log('✅ [SoundCloud] SDK Ready');
           this.initWidget().then(resolve);
         };
+
+        script.onerror = () => {
+          console.error('❌ [SoundCloud] Failed to load SDK script');
+          resolve(false);
+        };
         
         document.body.appendChild(script);
       } else {
@@ -72,44 +77,70 @@ export class SoundCloudAdapter implements IPlayerAdapter {
     const SC = (window as any).SC;
     this.widget = SC.Widget(iframe);
 
-    this.widget.bind(SC.Widget.Events.READY, () => {
-      if (this.isDestroyed) return; // 🚨 GUARD
-      console.log('✅ [SoundCloud] Widget Ready');
-      this.state.canPlay = true;
-      this.widget.setVolume(this.state.volume * 100);
-      this.notifyStateChange();
-    });
+    // 🚨 FIX: Wait for READY inside a Promise so initialize() doesn't resolve prematurely.
+    // This prevents the race condition where READY fires before bind is called,
+    // AND ensures the adapter reports canPlay=true before the component tries to play.
+    return new Promise<boolean>((resolve) => {
+      const onReady = () => {
+        if (this.isDestroyed) {
+          resolve(false);
+          return;
+        }
+        console.log('✅ [SoundCloud] Widget Ready');
+        this.state.canPlay = true;
+        this.widget.setVolume(this.state.volume * 100);
+        this.notifyStateChange();
+        resolve(true);
+      };
 
-    this.widget.bind(SC.Widget.Events.PLAY, () => {
-      if (this.isDestroyed) return;
-      this.state.isPlaying = true;
-      // Fetch duration when playback starts (most reliable timing)
-      this.fetchDuration();
-      this.notifyStateChange();
-    });
+      this.widget.bind(SC.Widget.Events.READY, onReady);
 
-    this.widget.bind(SC.Widget.Events.PAUSE, () => {
-      if (this.isDestroyed) return;
-      this.state.isPlaying = false;
-      this.notifyStateChange();
-    });
+      // 🚨 SAFETY NET: If READY doesn't fire within 5 seconds, resolve anyway.
+      // The widget with an empty URL should fire READY quickly, but if it doesn't,
+      // we don't want to hang forever.
+      setTimeout(() => {
+        if (!this.state.canPlay && !this.isDestroyed) {
+          console.warn('⚠️ [SoundCloud] READY event timed out, forcing ready state');
+          this.state.canPlay = true;
+          this.notifyStateChange();
+          resolve(true);
+        }
+      }, 5000);
+    }).then((ready) => {
+      if (!ready || this.isDestroyed) return false;
 
-    this.widget.bind(SC.Widget.Events.FINISH, () => {
-      if (this.isDestroyed) return;
-      this.handleTrackEnd();
-    });
+      // Bind remaining events AFTER widget is confirmed ready
+      const SC = (window as any).SC;
 
-    this.widget.bind(SC.Widget.Events.PLAY_PROGRESS, (data: any) => {
-      if (this.isDestroyed) return;
-      this.state.currentTime = data.currentPosition;
-      // Duration isn't available on the progress event — fetch via widget API if we don't have it yet
-      if (!this.state.duration || this.state.duration === 0) {
+      this.widget.bind(SC.Widget.Events.PLAY, () => {
+        if (this.isDestroyed) return;
+        this.state.isPlaying = true;
         this.fetchDuration();
-      }
-      this.notifyStateChange();
-    });
+        this.notifyStateChange();
+      });
 
-    return true;
+      this.widget.bind(SC.Widget.Events.PAUSE, () => {
+        if (this.isDestroyed) return;
+        this.state.isPlaying = false;
+        this.notifyStateChange();
+      });
+
+      this.widget.bind(SC.Widget.Events.FINISH, () => {
+        if (this.isDestroyed) return;
+        this.handleTrackEnd();
+      });
+
+      this.widget.bind(SC.Widget.Events.PLAY_PROGRESS, (data: any) => {
+        if (this.isDestroyed) return;
+        this.state.currentTime = data.currentPosition;
+        if (!this.state.duration || this.state.duration === 0) {
+          this.fetchDuration();
+        }
+        this.notifyStateChange();
+      });
+
+      return true;
+    });
   }
 
   /**
