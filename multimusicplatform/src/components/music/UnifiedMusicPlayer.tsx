@@ -170,10 +170,13 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
 
   // Play track when it changes and clear any previous errors
   useEffect(() => {
-    let isPlayCancelled = false; // 🚨 CRITICAL FIX: Track rapid song switching
+    let isPlayCancelled = false; // 🚨 Track rapid song switching
     setError('');
 
-    if (adapterRef.current && playerState.canPlay) {
+    // 🚨 THE FIX: Ensure the adapter we are about to use actually matches the track's platform.
+    const isCorrectPlatform = currentPlatformRef.current === track.platform;
+
+    if (isCorrectPlatform && adapterRef.current && playerState.canPlay) {
       adapterRef.current.play(track).catch((err) => {
         if (!isPlayCancelled) {
           console.error('Failed to play track:', err);
@@ -185,7 +188,7 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
     return () => {
       isPlayCancelled = true; // Invalidate previous play request if track changes
     };
-  }, [track.id, playerState.canPlay]);
+  }, [track.id, playerState.canPlay, track.platform]);
 
   const togglePlay = () => {
     adapterRef.current?.togglePlay();
