@@ -7,18 +7,10 @@ declare global {
   }
 }
 
-// --- SINGLETON STATE ---
-// The Spotify SDK throws an "initialization_error" if created multiple times.
-// We keep a single global instance alive and route its events to the active adapter.
-let globalSpotifyPlayer: any = null;
-let globalDeviceId: string = '';
-let globalIsPremium: boolean | null = null;
-let currentSpotifyAdapter: SpotifyAdapter | null = null;
-let globalCurrentToken: string = '';
-
 export class SpotifyAdapter implements IPlayerAdapter {
   private player: any = null;
   private deviceId: string = '';
+  private token: string = '';
   private isPremium: boolean | null = null;
   private audioElement: HTMLAudioElement | null = null;
   
@@ -38,29 +30,11 @@ export class SpotifyAdapter implements IPlayerAdapter {
   private progressInterval?: NodeJS.Timeout;
 
   async initialize(token: string): Promise<boolean> {
-    globalCurrentToken = token;
-    currentSpotifyAdapter = this; // Route global events to this active instance
-    
+    this.token = token;
     console.log('🎵 [Spotify] Initializing...');
 
     return new Promise((resolve) => {
-      // 🚨 FIX 1: Check for the Singleton to prevent initialization_error
-      if (globalSpotifyPlayer) {
-        console.log('🎮 [Spotify] Reusing global player instance...');
-        this.player = globalSpotifyPlayer;
-        this.deviceId = globalDeviceId;
-        this.isPremium = globalIsPremium;
-        this.state.canPlay = true;
-        
-        // If we previously fell back to preview mode, ensure we init it locally
-        if (this.isPremium === false) {
-           this.initPreviewMode();
-        }
-        
-        resolve(true);
-        return;
-      }
-
+      // Load Spotify SDK
       if (!window.Spotify) {
         const script = document.createElement('script');
         script.src = 'https://sdk.scdn.co/spotify-player.js';
@@ -79,89 +53,74 @@ export class SpotifyAdapter implements IPlayerAdapter {
   }
 
   private async initPlayer(): Promise<boolean> {
-    console.log('🎮 [Spotify] Creating new global Player...');
+    console.log('🎮 [Spotify] Initializing Player...');
 
     const player = new window.Spotify.Player({
       name: 'MultiMusic Web Player',
-      getOAuthToken: (cb: (t: string) => void) => cb(globalCurrentToken),
+      getOAuthToken: (cb: (t: string) => void) => cb(this.token),
       volume: this.state.volume,
     });
 
-    // Save to the global module scope so it survives component unmounts
-    globalSpotifyPlayer = player;
+    // Assign early so cleanup can find it if needed
     this.player = player;
 
+    // Premium player ready
     player.addListener('ready', ({ device_id }: any) => {
       console.log('✅ [Spotify] Premium Ready! Device:', device_id);
-      globalDeviceId = device_id;
-      globalIsPremium = true;
-      
-      if (currentSpotifyAdapter) {
-        currentSpotifyAdapter.deviceId = device_id;
-        currentSpotifyAdapter.isPremium = true;
-        currentSpotifyAdapter.state.canPlay = true;
-        currentSpotifyAdapter.notifyStateChange();
-      }
+      this.deviceId = device_id;
+      this.isPremium = true;
+      this.state.canPlay = true;
+      this.notifyStateChange();
     });
 
     player.addListener('not_ready', () => {
       console.log('❌ [Spotify] Not ready');
     });
 
+    // Track state changes
     player.addListener('player_state_changed', (spotifyState: any) => {
-      if (!spotifyState || !currentSpotifyAdapter) return;
-      currentSpotifyAdapter.handleSpotifyState(spotifyState);
+      if (!spotifyState) return;
+
+      this.state.isPlaying = !spotifyState.paused;
+      this.state.currentTime = spotifyState.position;
+      this.state.duration = spotifyState.duration;
+      
+      // Check if track ended
+      if (spotifyState.position === 0 && spotifyState.paused && this.state.duration > 0) {
+        this.handleTrackEnd();
+      }
+
+      this.notifyStateChange();
     });
 
+    // Handle Premium requirement errors
     player.addListener('account_error', (e: any) => {
       console.error('❌ [Spotify] Account error:', e.message);
-      globalIsPremium = false;
-      if (currentSpotifyAdapter) {
-        currentSpotifyAdapter.isPremium = false;
-        currentSpotifyAdapter.initPreviewMode();
-      }
+      this.isPremium = false;
+      this.initPreviewMode();
     });
 
     player.addListener('authentication_error', (e: any) => {
       console.error('❌ [Spotify] Auth error:', e.message);
-      globalIsPremium = false;
-      if (currentSpotifyAdapter) {
-         currentSpotifyAdapter.isPremium = false;
-         currentSpotifyAdapter.notifyError(new Error(`Authentication failed: ${e.message}`));
-      }
+      this.isPremium = false;
+      this.notifyError(new Error(`Authentication failed: ${e.message}`));
     });
 
     player.addListener('initialization_error', (e: any) => {
       console.error('❌ [Spotify] Init error:', e.message);
-      globalIsPremium = false;
-      if (currentSpotifyAdapter) {
-        currentSpotifyAdapter.isPremium = false;
-        currentSpotifyAdapter.initPreviewMode();
-      }
+      this.isPremium = false;
+      this.initPreviewMode();
     });
 
     const connected = await player.connect();
     console.log(connected ? '✅ [Spotify] Connected' : '❌ [Spotify] Connect failed');
     
     if (!connected) {
-      globalIsPremium = false;
       this.isPremium = false;
       this.initPreviewMode();
     }
 
     return true;
-  }
-
-  // Public helper so the global listener can pass state to the current instance
-  public handleSpotifyState(spotifyState: any) {
-    this.state.isPlaying = !spotifyState.paused;
-    this.state.currentTime = spotifyState.position;
-    this.state.duration = spotifyState.duration;
-    
-    if (spotifyState.position === 0 && spotifyState.paused && this.state.duration > 0) {
-      this.handleTrackEnd();
-    }
-    this.notifyStateChange();
   }
 
   private initPreviewMode() {
@@ -175,6 +134,7 @@ export class SpotifyAdapter implements IPlayerAdapter {
     this.audioElement.volume = this.state.volume;
     this.audioElement.loop = this.state.isLooping;
 
+    // Track progress for preview
     this.audioElement.addEventListener('timeupdate', () => {
       if (this.audioElement) {
         this.state.currentTime = this.audioElement.currentTime * 1000;
@@ -183,6 +143,7 @@ export class SpotifyAdapter implements IPlayerAdapter {
       }
     });
 
+    // Track when preview ends
     this.audioElement.addEventListener('ended', () => {
       this.handleTrackEnd();
     });
@@ -209,7 +170,7 @@ export class SpotifyAdapter implements IPlayerAdapter {
 
   private async playPremium(track: Track): Promise<void> {
     try {
-      // 🚨 FIX 2: Restored the actual official Spotify Web API endpoint
+      // 🚨 Corrected to the official Spotify API endpoint
       const res = await fetch(
         `https://api.spotify.com/v1/me/player/play?device_id=${this.deviceId}`,
         {
@@ -217,12 +178,12 @@ export class SpotifyAdapter implements IPlayerAdapter {
           body: JSON.stringify({ uris: [track.uri] }),
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${globalCurrentToken}`,
+            Authorization: `Bearer ${this.token}`,
           },
         }
       );
 
-      if (res.ok) {
+      if (res.ok || res.status === 204) {
         console.log('✅ [Spotify] Playing Premium');
         this.startProgressTracking();
       } else {
@@ -325,18 +286,12 @@ export class SpotifyAdapter implements IPlayerAdapter {
   }
 
   cleanup(): void {
-    console.log('🧹 [Spotify] Cleaning up local adapter...');
+    console.log('🧹 [Spotify] Cleaning up...');
     this.stopProgressTracking();
 
     if (this.player) {
-      this.player.pause(); 
-      // 🚨 FIX 3: Do NOT call disconnect(). We leave the global player alive in the background.
-      this.player = null; 
-    }
-
-    // Unhook global events from this specific adapter
-    if (currentSpotifyAdapter === this) {
-      currentSpotifyAdapter = null; 
+      this.player.disconnect();
+      this.player = null;
     }
 
     if (this.audioElement) {
@@ -370,6 +325,7 @@ export class SpotifyAdapter implements IPlayerAdapter {
     this.stopProgressTracking();
 
     if (this.state.isLooping && this.trackEndCallback) {
+      // If looping, replay will be handled by the player component
       this.trackEndCallback();
     } else if (this.trackEndCallback) {
       this.trackEndCallback();
@@ -384,15 +340,22 @@ export class SpotifyAdapter implements IPlayerAdapter {
     }
   }
 
+  // 🚨 THE SHIELD: Progress tracking wrapped in try/catch to survive SDK streamer crashes
   private startProgressTracking(): void {
     this.stopProgressTracking();
     this.progressInterval = setInterval(async () => {
       if (this.isPremium && this.player) {
-        const state = await this.player.getCurrentState();
-        if (state) {
-          this.state.currentTime = state.position;
-          this.state.duration = state.duration;
-          this.notifyStateChange();
+        try {
+          const state = await this.player.getCurrentState();
+          if (state) {
+            this.state.currentTime = state.position;
+            this.state.duration = state.duration;
+            this.notifyStateChange();
+          }
+        } catch (err) {
+          // Swallow the _streamer error silently.
+          // The player will catch up automatically when the streamer reconnects.
+          console.warn('Spotify SDK internal sync skipped:', err);
         }
       }
     }, 500); 
