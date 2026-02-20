@@ -98,8 +98,9 @@ export class YouTubeAdapter implements IPlayerAdapter {
             this.handleStateChange(event.data);
           },
           onError: (event: any) => {
-            this.handleError(event.data);
-            reject(new Error('YouTube player error'));
+            // 🚨 FIX: Capture the detailed message and use it to reject the Promise
+            const detailedMessage = this.handleError(event.data);
+            reject(new Error(detailedMessage)); 
           },
         },
       });
@@ -134,7 +135,8 @@ export class YouTubeAdapter implements IPlayerAdapter {
     this.notifyStateChange();
   }
 
-  private handleError(errorCode: number): void {
+  // 🚨 FIX: Return the error message string so it can be passed up
+  private handleError(errorCode: number): string {
     let message = 'Unknown YouTube error';
 
     switch (errorCode) {
@@ -162,6 +164,11 @@ export class YouTubeAdapter implements IPlayerAdapter {
     }
 
     this.notifyError(new Error(message));
+    
+    // 🚨 FIX: Destroy the iframe immediately so it doesn't get stuck in the background
+    this.cleanup();
+
+    return message;
   }
 
   private startProgressTracking(): void {
@@ -190,19 +197,15 @@ export class YouTubeAdapter implements IPlayerAdapter {
     console.log('🎵 [YouTube] Playing:', track.name);
     this.currentTrack = track;
 
-    // Extract video ID from URI
-    // URI could be: video ID directly, or full URL
     const videoId = this.extractVideoId(track.uri);
 
     if (!videoId) {
       throw new Error('Invalid YouTube video ID');
     }
 
-    // Ensure player exists (lazy initialization)
     if (!this.player || !this.playerReady) {
       await this.ensurePlayer(videoId);
     } else {
-      // Player already exists, just load new video
       await this.player.loadVideoById(videoId);
     }
 
@@ -211,12 +214,10 @@ export class YouTubeAdapter implements IPlayerAdapter {
   }
 
   private extractVideoId(uri: string): string {
-    // If it's already just an ID
     if (uri.length === 11 && !uri.includes('/') && !uri.includes('?')) {
       return uri;
     }
 
-    // Extract from various YouTube URL formats
     const patterns = [
       /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
       /^([a-zA-Z0-9_-]{11})$/,
@@ -229,7 +230,7 @@ export class YouTubeAdapter implements IPlayerAdapter {
       }
     }
 
-    return uri; // Return as-is if no pattern matches
+    return uri;
   }
 
   async pause(): Promise<void> {
@@ -263,7 +264,7 @@ export class YouTubeAdapter implements IPlayerAdapter {
   async setVolume(volume: number): Promise<void> {
     this.state.volume = Math.max(0, Math.min(1, volume));
     if (this.player && this.playerReady) {
-      await this.player.setVolume(this.state.volume * 100); // YouTube uses 0-100
+      await this.player.setVolume(this.state.volume * 100);
     }
     this.notifyStateChange();
   }
@@ -271,7 +272,6 @@ export class YouTubeAdapter implements IPlayerAdapter {
   async setLoop(enabled: boolean): Promise<void> {
     this.state.isLooping = enabled;
     console.log('🔁 [YouTube] Loop:', enabled);
-    // YouTube has native loop, but we'll handle via trackEnd callback for consistency
     this.notifyStateChange();
   }
 
@@ -284,8 +284,12 @@ export class YouTubeAdapter implements IPlayerAdapter {
 
     this.stopProgressTracking();
 
-    if (this.player) {
-      this.player.destroy();
+    if (this.player && typeof this.player.destroy === 'function') {
+      try {
+        this.player.destroy();
+      } catch (e) {
+        console.warn("YouTube player destroy failed", e);
+      }
       this.player = null;
     }
 
@@ -317,10 +321,8 @@ export class YouTubeAdapter implements IPlayerAdapter {
     console.log('🏁 [YouTube] Track ended');
 
     if (this.state.isLooping && this.currentTrack) {
-      // Replay the same track
       this.play(this.currentTrack);
     } else if (this.trackEndCallback) {
-      // Move to next track
       this.trackEndCallback();
     }
   }

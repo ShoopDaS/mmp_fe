@@ -157,7 +157,7 @@ export class SpotifyAdapter implements IPlayerAdapter {
     } else if (track.preview_url) {
       this.playPreview(track);
     } else {
-      this.notifyError(new Error('No playback available for this track'));
+      throw new Error('No playback available for this track');
     }
   }
 
@@ -183,12 +183,17 @@ export class SpotifyAdapter implements IPlayerAdapter {
         if (res.status === 403) {
           this.isPremium = false;
           this.initPreviewMode();
-          if (track.preview_url) this.playPreview(track);
+          if (track.preview_url) {
+             this.playPreview(track);
+          } else {
+             throw new Error("Premium account required for this track.");
+          }
         }
       }
     } catch (e) {
       console.error('❌ [Spotify] Error:', e);
       this.notifyError(e as Error);
+      throw e;
     }
   }
 
@@ -330,7 +335,6 @@ export class SpotifyAdapter implements IPlayerAdapter {
     }
   }
 
-  // Track progress for Premium (SDK doesn't auto-update)
   private startProgressTracking(): void {
     this.stopProgressTracking();
     this.progressInterval = setInterval(async () => {

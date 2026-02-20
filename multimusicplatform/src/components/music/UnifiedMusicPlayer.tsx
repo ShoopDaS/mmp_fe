@@ -37,7 +37,7 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
   const [showVolume, setShowVolume] = useState(false);
   const adapterRef = useRef<IPlayerAdapter | null>(null);
   const currentPlatformRef = useRef<string | null>(null);
-  const isLoopingRef = useRef(false); // 👈 Add this
+  const isLoopingRef = useRef(false);
 
   // Initialize adapter based on platform - reinitialize when platform changes
   useEffect(() => {
@@ -65,8 +65,6 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
           return;
         }
       }
-
-      if (isCancelled) return;
 
       // Clear error and reset player state when creating new adapter
       setError('');
@@ -101,10 +99,11 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
 
       // Set up callbacks
       adapter.onStateChange((state) => {
-        setPlayerState(state);
+        if (!isCancelled) setPlayerState(state);
       });
 
       adapter.onTrackEnd(() => {
+        if (isCancelled) return;
         if (isLoopingRef.current) {
           // Replay the same track
           adapter.play(track);
@@ -115,12 +114,22 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
       });
 
       adapter.onError((err) => {
-        console.error('❌ Player error:', err);
-        setError(err.message);
+        if (!isCancelled) {
+          console.error('❌ Player error:', err);
+          setError(err.message);
+        }
       });
 
-      // Initialize
+      // Initialize (Async call)
       const success = await adapter.initialize(token);
+      
+      // 🚨 CRITICAL FIX: Check if user switched platforms during the await
+      if (isCancelled) {
+        console.log('🛑 Aborting initialization: platform changed');
+        adapter.cleanup();
+        return;
+      }
+
       if (!success) {
         setError('Failed to initialize player');
         return;
@@ -130,15 +139,15 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
     };
 
     initAdapter().catch((err) => {
-      console.error('Failed to init adapter:', err);
-      setError(err.message);
+      if (!isCancelled) {
+        console.error('Failed to init adapter:', err);
+        setError(err.message);
+      }
     });
 
     return () => {
-      // Only mark as cancelled for cleanup on unmount
+      // Mark as cancelled so any pending initialization aborts
       isCancelled = true;
-      // Don't cleanup adapter here - initAdapter handles platform changes
-      // Only cleanup on full component unmount (handled separately below)
     };
   }, [track.platform, token]);
 
@@ -161,15 +170,21 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
 
   // Play track when it changes and clear any previous errors
   useEffect(() => {
-    // Clear error state when track changes
+    let isPlayCancelled = false; // 🚨 CRITICAL FIX: Track rapid song switching
     setError('');
 
     if (adapterRef.current && playerState.canPlay) {
       adapterRef.current.play(track).catch((err) => {
-        console.error('Failed to play track:', err);
-        setError(err.message);
+        if (!isPlayCancelled) {
+          console.error('Failed to play track:', err);
+          setError(err.message);
+        }
       });
     }
+
+    return () => {
+      isPlayCancelled = true; // Invalidate previous play request if track changes
+    };
   }, [track.id, playerState.canPlay]);
 
   const togglePlay = () => {
@@ -242,14 +257,11 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
       <div className="fixed bottom-0 left-0 right-0 bg-black/90 backdrop-blur-lg border-t border-red-500/30 p-4">
         <div className="max-w-6xl mx-auto">
           <div className="flex items-center gap-4">
-            {/* Album Art */}
             <img
               src={track.album.images[0]?.url}
               alt={track.album.name}
               className="w-16 h-16 rounded shadow-lg opacity-50"
             />
-
-            {/* Error Message */}
             <div className="flex-1">
               <div className="flex items-start gap-2">
                 <span className="text-red-400 text-xl">⚠️</span>
@@ -259,8 +271,6 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
                 </div>
               </div>
             </div>
-
-            {/* Open on YouTube Button */}
             {youtubeUrl && (
               <a
                 href={youtubeUrl}
@@ -281,7 +291,6 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-black/90 backdrop-blur-lg border-t border-white/10 p-4">
       <div className="max-w-6xl mx-auto">
-        {/* Progress Bar */}
         <div className="mb-3">
           <input
             type="range"
@@ -300,16 +309,13 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
           </div>
         </div>
 
-        {/* Main Player Controls */}
         <div className="flex items-center gap-4">
-          {/* Album Art */}
           <img
             src={track.album.images[0]?.url}
             alt={track.album.name}
             className="w-16 h-16 rounded shadow-lg"
           />
 
-          {/* Track Info */}
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold text-white truncate">{track.name}</h3>
             <p className="text-sm text-gray-300 truncate">
@@ -327,9 +333,7 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
             </div>
           </div>
 
-          {/* Playback Controls */}
           <div className="flex items-center gap-3">
-            {/* Loop Button */}
             <button
               onClick={toggleLoop}
               className={`p-2 rounded-full transition-all ${
@@ -344,7 +348,6 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
               </svg>
             </button>
 
-            {/* Play/Pause Button */}
             <button
               onClick={togglePlay}
               className={`w-12 h-12 ${getPlatformColor()} rounded-full flex items-center justify-center hover:scale-110 transition-transform shadow-lg`}
@@ -354,7 +357,6 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
               </span>
             </button>
 
-            {/* Volume Control */}
             <div className="relative">
               <button
                 onClick={() => setShowVolume(!showVolume)}
@@ -384,7 +386,6 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
               )}
             </div>
 
-            {/* Debug Button */}
             <button
               onClick={() => console.log('🐛 Player State:', playerState, 'Track:', track)}
               className="px-3 py-1 bg-gray-700 text-white text-xs rounded hover:bg-gray-600 transition-colors"
