@@ -83,6 +83,8 @@ export class SoundCloudAdapter implements IPlayerAdapter {
     this.widget.bind(SC.Widget.Events.PLAY, () => {
       if (this.isDestroyed) return;
       this.state.isPlaying = true;
+      // Fetch duration when playback starts (most reliable timing)
+      this.fetchDuration();
       this.notifyStateChange();
     });
 
@@ -100,16 +102,37 @@ export class SoundCloudAdapter implements IPlayerAdapter {
     this.widget.bind(SC.Widget.Events.PLAY_PROGRESS, (data: any) => {
       if (this.isDestroyed) return;
       this.state.currentTime = data.currentPosition;
-      this.state.duration = data.soundDuration;
+      // Duration isn't available on the progress event — fetch via widget API if we don't have it yet
+      if (!this.state.duration || this.state.duration === 0) {
+        this.fetchDuration();
+      }
       this.notifyStateChange();
     });
 
     return true;
   }
 
+  /**
+   * Fetch duration from the SoundCloud Widget API.
+   * The PLAY_PROGRESS event does NOT include duration — it must be queried separately.
+   */
+  private fetchDuration(): void {
+    if (this.isDestroyed || !this.widget) return;
+    this.widget.getDuration((duration: number) => {
+      if (!this.isDestroyed && duration && duration > 0) {
+        this.state.duration = duration;
+        this.notifyStateChange();
+      }
+    });
+  }
+
   async play(track: Track): Promise<void> {
     if (this.isDestroyed || !this.widget) return;
     console.log('🎵 [SoundCloud] Playing:', track.name);
+    
+    // Reset duration for new track so we re-fetch it
+    this.state.duration = 0;
+    this.state.currentTime = 0;
     
     await this.widget.load(track.uri, {
       auto_play: true,
