@@ -140,6 +140,14 @@ class ApiClient {
     );
   }
 
+  async refreshPlaylist(platform: 'youtube' | 'soundcloud', playlistId: string) {
+    return this.request<{ playlist: any; source: string }>(
+      `/platforms/${platform}/playlists/${encodeURIComponent(playlistId)}`,
+      { method: 'GET' },
+      true
+    );
+  }
+
   // User endpoints
   async getUserProfile() {
     return this.request('/user/profile', {}, true);

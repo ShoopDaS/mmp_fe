@@ -1,19 +1,33 @@
 'use client';
 
+import { useState } from 'react';
 import { UnifiedPlaylist } from '@/types/playlist';
 
 interface PlaylistItemProps {
   playlist: UnifiedPlaylist;
   isActive: boolean;
   onClick: (playlist: UnifiedPlaylist) => void;
+  onRefresh: (playlist: UnifiedPlaylist) => void;
 }
 
-export default function PlaylistItem({ playlist, isActive, onClick }: PlaylistItemProps) {
+export default function PlaylistItem({ playlist, isActive, onClick, onRefresh }: PlaylistItemProps) {
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefresh = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsRefreshing(true);
+    await onRefresh(playlist);
+    setIsRefreshing(false);
+  };
+
+  // Only show refresh for YouTube and SoundCloud (Spotify is always fresh client-side)
+  const showRefresh = playlist.platform !== 'spotify';
+
   return (
     <button
       onClick={() => onClick(playlist)}
       className={`
-        w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors
+        w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors group
         ${isActive
           ? 'bg-white/20 text-white'
           : 'text-gray-300 hover:bg-white/10 hover:text-white'
@@ -44,6 +58,23 @@ export default function PlaylistItem({ playlist, isActive, onClick }: PlaylistIt
           {playlist.owner ? ` · ${playlist.owner}` : ''}
         </p>
       </div>
+
+      {/* Refresh button */}
+      {showRefresh && (
+        <span
+          onClick={handleRefresh}
+          className={`
+            flex-shrink-0 text-xs p-1 rounded transition-all cursor-pointer
+            ${isRefreshing
+              ? 'animate-spin text-gray-300'
+              : 'text-gray-500 opacity-0 group-hover:opacity-100 hover:text-white'
+            }
+          `}
+          title="Refresh playlist tracks"
+        >
+          🔄
+        </span>
+      )}
     </button>
   );
 }

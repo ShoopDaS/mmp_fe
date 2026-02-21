@@ -319,6 +319,17 @@ export default function SearchPage() {
 
   // ========== Playlist Track Loading ==========
 
+  const loadPlaylistTracks = async (playlist: UnifiedPlaylist): Promise<Track[]> => {
+    if (playlist.platform === 'spotify') {
+      return fetchSpotifyPlaylistTracks(playlist.id, spotifyToken);
+    } else if (playlist.platform === 'youtube') {
+      return fetchYouTubePlaylistTracks(playlist.uri, youtubeToken);
+    } else if (playlist.platform === 'soundcloud') {
+      return fetchSoundCloudPlaylistTracks(playlist.id, soundcloudToken);
+    }
+    return [];
+  };
+
   const handlePlaylistSelect = async (playlist: UnifiedPlaylist) => {
     setActivePlaylist(playlist);
     setActiveTab('playlist');
@@ -326,21 +337,32 @@ export default function SearchPage() {
     setPlaylistTracks([]);
 
     try {
-      let loadedTracks: Track[] = [];
-
-      if (playlist.platform === 'spotify') {
-        loadedTracks = await fetchSpotifyPlaylistTracks(playlist.id, spotifyToken);
-      } else if (playlist.platform === 'youtube') {
-        loadedTracks = await fetchYouTubePlaylistTracks(playlist.uri, youtubeToken);
-      } else if (playlist.platform === 'soundcloud') {
-        loadedTracks = await fetchSoundCloudPlaylistTracks(playlist.id, soundcloudToken);
-      }
-
+      const loadedTracks = await loadPlaylistTracks(playlist);
       setPlaylistTracks(loadedTracks);
     } catch (error) {
       console.error('Error loading playlist tracks:', error);
     } finally {
       setIsLoadingPlaylistTracks(false);
+    }
+  };
+
+  const handlePlaylistRefresh = async (playlist: UnifiedPlaylist) => {
+    // If this playlist is currently active, reload its tracks
+    if (activePlaylist?.id === playlist.id) {
+      setIsLoadingPlaylistTracks(true);
+      setPlaylistTracks([]);
+
+      try {
+        const loadedTracks = await loadPlaylistTracks(playlist);
+        setPlaylistTracks(loadedTracks);
+      } catch (error) {
+        console.error('Error refreshing playlist tracks:', error);
+      } finally {
+        setIsLoadingPlaylistTracks(false);
+      }
+    } else {
+      // Not currently active — select it and load fresh
+      await handlePlaylistSelect(playlist);
     }
   };
 
@@ -376,6 +398,7 @@ export default function SearchPage() {
           soundcloudToken={soundcloudToken}
           activePlaylistId={activePlaylist?.id || null}
           onPlaylistSelect={handlePlaylistSelect}
+          onPlaylistRefresh={handlePlaylistRefresh}
         />
 
         {/* Main content */}

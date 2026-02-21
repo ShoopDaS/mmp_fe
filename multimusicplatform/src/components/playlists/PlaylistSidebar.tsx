@@ -10,6 +10,7 @@ interface PlaylistSidebarProps {
   soundcloudToken: string | null;
   activePlaylistId: string | null;
   onPlaylistSelect: (playlist: UnifiedPlaylist) => void;
+  onPlaylistRefresh: (playlist: UnifiedPlaylist) => void;
 }
 
 export default function PlaylistSidebar({
@@ -18,6 +19,7 @@ export default function PlaylistSidebar({
   soundcloudToken,
   activePlaylistId,
   onPlaylistSelect,
+  onPlaylistRefresh,
 }: PlaylistSidebarProps) {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
@@ -70,6 +72,7 @@ export default function PlaylistSidebar({
                 onPlaylistSelect(playlist);
                 setIsMobileOpen(false); // Close drawer on mobile after selection
               }}
+              onPlaylistRefresh={onPlaylistRefresh}
             />
           ))
         )}

@@ -10,6 +10,7 @@ interface PlatformPlaylistSectionProps {
   token: string | null;
   activePlaylistId: string | null;
   onPlaylistSelect: (playlist: UnifiedPlaylist) => void;
+  onPlaylistRefresh: (playlist: UnifiedPlaylist) => void;
 }
 
 const platformConfig = {
@@ -23,42 +24,35 @@ export default function PlatformPlaylistSection({
   token,
   activePlaylistId,
   onPlaylistSelect,
+  onPlaylistRefresh,
 }: PlatformPlaylistSectionProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [playlists, setPlaylists] = useState<UnifiedPlaylist[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [cachedAt, setCachedAt] = useState<number | null>(null);
-  const [source, setSource] = useState<string | null>(null);
 
   const config = platformConfig[platform];
 
-  const fetchPlaylists = useCallback(async (forceRefresh = false) => {
+  const fetchPlaylists = useCallback(async () => {
     setIsLoading(true);
     setError(null);
 
     try {
       if (platform === 'spotify') {
-        // Client-side fetch directly from Spotify API
         if (!token) {
           setError('No Spotify token');
           return;
         }
         const spotifyPlaylists = await fetchSpotifyPlaylists(token);
         setPlaylists(spotifyPlaylists);
-        setSource('client');
-        setCachedAt(null);
       } else {
-        // YouTube and SoundCloud go through backend with caching
-        const response = await apiClient.getPlatformPlaylists(platform, forceRefresh);
+        const response = await apiClient.getPlatformPlaylists(platform, false);
         if (response.error) {
           setError(response.error);
           return;
         }
         setPlaylists(response.data?.playlists || []);
-        setSource(response.data?.source || null);
-        setCachedAt(response.data?.cachedAt || null);
       }
       setHasFetched(true);
     } catch (err) {
@@ -75,28 +69,38 @@ export default function PlatformPlaylistSection({
     }
   }, [isExpanded, hasFetched, isLoading, fetchPlaylists]);
 
-  const handleRefresh = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    await fetchPlaylists(true);
-  };
-
   const handleToggle = () => {
     setIsExpanded((prev) => !prev);
   };
 
-  // Format "last updated" text
-  const getLastUpdatedText = (): string | null => {
-    if (!cachedAt || platform === 'spotify') return null;
-    const now = Math.floor(Date.now() / 1000);
-    const diffMinutes = Math.floor((now - cachedAt) / 60);
-    if (diffMinutes < 1) return 'just now';
-    if (diffMinutes < 60) return `${diffMinutes}m ago`;
-    const diffHours = Math.floor(diffMinutes / 60);
-    if (diffHours < 24) return `${diffHours}h ago`;
-    return `${Math.floor(diffHours / 24)}d ago`;
-  };
+  const handlePlaylistRefresh = async (playlist: UnifiedPlaylist) => {
+    if (platform === 'spotify') {
+      // Spotify is client-side only, just re-fetch tracks
+      onPlaylistRefresh(playlist);
+      return;
+    }
 
-  const lastUpdated = getLastUpdatedText();
+    // For YT/SC: call backend to refresh this specific playlist from source
+    try {
+      const response = await apiClient.refreshPlaylist(
+        platform as 'youtube' | 'soundcloud',
+        playlist.id
+      );
+      if (!response.error && response.data?.playlist) {
+        // Update just this one playlist in the sidebar list
+        setPlaylists((prev) =>
+          prev.map((p) =>
+            p.id === playlist.id ? response.data!.playlist : p
+          )
+        );
+      }
+    } catch (err) {
+      console.error(`Error refreshing ${platform} playlist ${playlist.id}:`, err);
+    }
+
+    // Then reload that specific playlist's tracks
+    onPlaylistRefresh(playlist);
+  };
 
   return (
     <div className="border-b border-white/10 last:border-b-0">
@@ -119,25 +123,6 @@ export default function PlatformPlaylistSection({
             <span className="text-xs text-gray-500">({playlists.length})</span>
           )}
         </div>
-
-        {/* Refresh button for cached platforms */}
-        {platform !== 'spotify' && hasFetched && (
-          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-            {lastUpdated && (
-              <span className="text-xs text-gray-500">{lastUpdated}</span>
-            )}
-            <button
-              onClick={handleRefresh}
-              disabled={isLoading}
-              className={`text-gray-400 hover:text-white transition-colors text-sm p-1 ${
-                isLoading ? 'animate-spin' : ''
-              }`}
-              title="Refresh playlists"
-            >
-              🔄
-            </button>
-          </div>
-        )}
       </button>
 
       {/* Playlist list */}
@@ -167,6 +152,7 @@ export default function PlatformPlaylistSection({
               playlist={playlist}
               isActive={activePlaylistId === playlist.id}
               onClick={onPlaylistSelect}
+              onRefresh={handlePlaylistRefresh}
             />
           ))}
         </div>
