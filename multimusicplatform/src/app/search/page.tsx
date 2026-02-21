@@ -4,11 +4,13 @@ import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/lib/api';
+import { UnifiedPlaylist } from '@/types/playlist';
 import Header from '@/components/layout/Header';
 import SearchBar from '@/components/music/SearchBar';
 import TrackList from '@/components/music/TrackList';
 import UnifiedMusicPlayer, { UnifiedMusicPlayerRef } from '@/components/music/UnifiedMusicPlayer';
 import { PlatformState } from '@/components/music/PlatformSelector';
+import PlaylistSidebar from '@/components/playlists/PlaylistSidebar';
 
 interface Track {
   id: string;
@@ -26,7 +28,7 @@ interface Track {
 
 interface StoredToken {
   accessToken: string;
-  expiresAt: number; // Unix timestamp in milliseconds
+  expiresAt: number;
 }
 
 // Helper functions for token management
@@ -40,7 +42,6 @@ const getStoredToken = (platform: string): string | null => {
     const tokenData: StoredToken = JSON.parse(stored);
     const now = Date.now();
 
-    // Check if token is expired (with 5-minute buffer for safety)
     if (tokenData.expiresAt <= now) {
       localStorage.removeItem(`${platform}_token`);
       return null;
@@ -56,8 +57,6 @@ const getStoredToken = (platform: string): string | null => {
 const storeToken = (platform: string, accessToken: string, expiresIn: number): void => {
   if (typeof window === 'undefined') return;
 
-  // Convert expiresIn (seconds) to expiration timestamp (milliseconds)
-  // Subtract 5 minutes (300 seconds) as a safety buffer
   const expiresAt = Date.now() + ((expiresIn - 300) * 1000);
 
   const tokenData: StoredToken = {
@@ -67,6 +66,10 @@ const storeToken = (platform: string, accessToken: string, expiresIn: number): v
 
   localStorage.setItem(`${platform}_token`, JSON.stringify(tokenData));
 };
+
+// ========== Active tab type ==========
+type ContentTab = 'search' | 'playlist';
+
 export default function SearchPage() {
   const router = useRouter();
   const { isLoading: authLoading, isAuthenticated } = useAuth();
@@ -80,9 +83,15 @@ export default function SearchPage() {
   const playerRef = useRef<UnifiedMusicPlayerRef>(null);
   const [selectedPlatforms, setSelectedPlatforms] = useState<PlatformState>({
     spotify: true,
-    soundcloud: false, // Default OFF as requested
+    soundcloud: false,
     youtube: true,
   });
+
+  // Playlist state
+  const [activeTab, setActiveTab] = useState<ContentTab>('search');
+  const [activePlaylist, setActivePlaylist] = useState<UnifiedPlaylist | null>(null);
+  const [playlistTracks, setPlaylistTracks] = useState<Track[]>([]);
+  const [isLoadingPlaylistTracks, setIsLoadingPlaylistTracks] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -91,7 +100,6 @@ export default function SearchPage() {
     }
 
     if (isAuthenticated) {
-      // First, try to load tokens from localStorage
       const spotifyStored = getStoredToken('spotify');
       const soundcloudStored = getStoredToken('soundcloud');
       const youtubeStored = getStoredToken('youtube');
@@ -100,14 +108,11 @@ export default function SearchPage() {
       if (soundcloudStored) setSoundcloudToken(soundcloudStored);
       if (youtubeStored) setYoutubeToken(youtubeStored);
 
-      // Then refresh only if tokens are missing or expired
       loadPlatformTokens();
     }
   }, [authLoading, isAuthenticated, router]);
 
   const loadPlatformTokens = async () => {
-    // Load tokens for all platforms (only refresh if expired or missing)
-
     // Spotify
     const spotifyStored = getStoredToken('spotify');
     if (!spotifyStored) {
@@ -154,6 +159,8 @@ export default function SearchPage() {
     }
   };
 
+  // ========== Search Functions ==========
+
   const searchSpotify = async (query: string): Promise<Track[]> => {
     if (!spotifyToken || !selectedPlatforms.spotify) return [];
 
@@ -168,7 +175,6 @@ export default function SearchPage() {
       );
 
       if (response.status === 401) {
-        // Token expired, refresh
         await loadPlatformTokens();
         return [];
       }
@@ -194,7 +200,6 @@ export default function SearchPage() {
     if (!selectedPlatforms.soundcloud) return [];
 
     try {
-      // Use backend proxy to avoid CORS issues
       const response = await apiClient.soundcloudSearch(query);
 
       if (response.error) {
@@ -202,7 +207,6 @@ export default function SearchPage() {
         return [];
       }
 
-      // Backend returns normalized tracks
       return response.data?.tracks || [];
     } catch (error) {
       console.error('SoundCloud search error:', error);
@@ -214,7 +218,6 @@ export default function SearchPage() {
     if (!youtubeToken || !selectedPlatforms.youtube) return [];
 
     try {
-      // First, search for videos
       const searchResponse = await fetch(
         `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&q=${encodeURIComponent(query)}&maxResults=20`,
         {
@@ -231,7 +234,6 @@ export default function SearchPage() {
 
       if (videoIds.length === 0) return [];
 
-      // Fetch video details to check embeddable status
       const detailsResponse = await fetch(
         `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,status&id=${videoIds.join(',')}&maxResults=20`,
         {
@@ -245,20 +247,8 @@ export default function SearchPage() {
 
       const detailsData = await detailsResponse.json();
 
-      // Debug logging - show full status for debugging
       console.log('📹 [YouTube] Total videos from API:', detailsData.items?.length || 0);
-      detailsData.items?.forEach((item: any, index: number) => {
-        console.log(`📹 [${index + 1}] "${item.snippet.title.substring(0, 40)}..."`, {
-          id: item.id,
-          embeddable: item.status?.embeddable,
-          publicStatsViewable: item.status?.publicStatsViewable,
-          license: item.status?.license,
-          regionRestriction: item.contentDetails?.regionRestriction,
-          contentRating: item.contentDetails?.contentRating
-        });
-      });
 
-      // Filter videos that can actually be embedded
       const embeddableVideos = (detailsData.items || [])
         .filter((item: any) => {
           const embeddable = item.status?.embeddable === true;
@@ -266,22 +256,16 @@ export default function SearchPage() {
           const notAgeRestricted = !item.contentDetails?.contentRating?.ytRating;
           const noRegionBlock = !item.contentDetails?.regionRestriction?.blocked;
 
-          const passes = embeddable && publicStats && notAgeRestricted && noRegionBlock;
-
-          if (!passes) {
-            console.log(`❌ Filtered out: "${item.snippet.title.substring(0, 40)}..." - embeddable:${embeddable}, publicStats:${publicStats}, notAge:${notAgeRestricted}, noRegion:${noRegionBlock}`);
-          }
-
-          return passes;
+          return embeddable && publicStats && notAgeRestricted && noRegionBlock;
         });
 
-      console.log('✅ [YouTube] Playable videos (after filtering):', embeddableVideos.length, 'out of', detailsData.items?.length);
+      console.log('✅ [YouTube] Playable videos (after filtering):', embeddableVideos.length);
 
       return embeddableVideos.map((item: any) => ({
         id: `youtube-${item.id}`,
         platform: 'youtube' as const,
         name: item.snippet.title,
-        uri: item.id, // Just use video ID for cleaner URI
+        uri: item.id,
         artists: [{ name: item.snippet.channelTitle }],
         album: {
           name: item.snippet.channelTitle,
@@ -296,7 +280,6 @@ export default function SearchPage() {
     }
   };
 
-  // Helper function to parse ISO 8601 duration to milliseconds
   const parseDuration = (isoDuration: string): number => {
     const match = isoDuration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
     if (!match) return 0;
@@ -311,30 +294,75 @@ export default function SearchPage() {
   const handleSearch = async (query: string) => {
     if (!query.trim()) return;
 
-    // Check if at least one platform is selected
     if (!Object.values(selectedPlatforms).some(Boolean)) {
       alert('Please select at least one platform to search');
       return;
     }
 
     setIsSearching(true);
+    setActiveTab('search');
     try {
-      // Search all selected platforms in parallel
       const [spotifyTracks, soundcloudTracks, youtubeTracks] = await Promise.all([
         searchSpotify(query),
         searchSoundCloud(query),
         searchYouTube(query),
       ]);
 
-      // Combine and set results
       const allTracks = [...spotifyTracks, ...soundcloudTracks, ...youtubeTracks];
       setTracks(allTracks);
-
-
     } catch (error) {
       console.error('Search error:', error);
     } finally {
       setIsSearching(false);
+    }
+  };
+
+  // ========== Playlist Track Loading ==========
+
+  const loadPlaylistTracks = async (playlist: UnifiedPlaylist): Promise<Track[]> => {
+    if (playlist.platform === 'spotify') {
+      return fetchSpotifyPlaylistTracks(playlist.id, spotifyToken);
+    } else if (playlist.platform === 'youtube') {
+      return fetchYouTubePlaylistTracks(playlist.uri, youtubeToken);
+    } else if (playlist.platform === 'soundcloud') {
+      return fetchSoundCloudPlaylistTracks(playlist.id, soundcloudToken);
+    }
+    return [];
+  };
+
+  const handlePlaylistSelect = async (playlist: UnifiedPlaylist) => {
+    setActivePlaylist(playlist);
+    setActiveTab('playlist');
+    setIsLoadingPlaylistTracks(true);
+    setPlaylistTracks([]);
+
+    try {
+      const loadedTracks = await loadPlaylistTracks(playlist);
+      setPlaylistTracks(loadedTracks);
+    } catch (error) {
+      console.error('Error loading playlist tracks:', error);
+    } finally {
+      setIsLoadingPlaylistTracks(false);
+    }
+  };
+
+  const handlePlaylistRefresh = async (playlist: UnifiedPlaylist) => {
+    // If this playlist is currently active, reload its tracks
+    if (activePlaylist?.id === playlist.id) {
+      setIsLoadingPlaylistTracks(true);
+      setPlaylistTracks([]);
+
+      try {
+        const loadedTracks = await loadPlaylistTracks(playlist);
+        setPlaylistTracks(loadedTracks);
+      } catch (error) {
+        console.error('Error refreshing playlist tracks:', error);
+      } finally {
+        setIsLoadingPlaylistTracks(false);
+      }
+    } else {
+      // Not currently active — select it and load fresh
+      await handlePlaylistSelect(playlist);
     }
   };
 
@@ -354,52 +382,118 @@ export default function SearchPage() {
     );
   }
 
+  // Determine which tracks to show based on active tab
+  const displayTracks = activeTab === 'playlist' ? playlistTracks : tracks;
+  const isLoadingTracks = activeTab === 'playlist' ? isLoadingPlaylistTracks : isSearching;
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-black">
+    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-black flex flex-col">
       <Header />
 
-      <main className={`max-w-6xl mx-auto px-4 py-8 transition-all duration-300 ${currentTrack ? 'pb-56' : 'pb-8'}`}>
-        <h1 className="text-4xl font-bold text-white mb-8">Search Music</h1>
-
-        <SearchBar
-          onSearch={handleSearch}
-          isSearching={isSearching}
-          selectedPlatforms={selectedPlatforms}
-          onPlatformsChange={setSelectedPlatforms}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Playlist Sidebar */}
+        <PlaylistSidebar
+          spotifyToken={spotifyToken}
+          youtubeToken={youtubeToken}
+          soundcloudToken={soundcloudToken}
+          activePlaylistId={activePlaylist?.id || null}
+          onPlaylistSelect={handlePlaylistSelect}
+          onPlaylistRefresh={handlePlaylistRefresh}
         />
 
-        {/* YouTube Warning Banner */}
-        {tracks.length > 0 && tracks.some(t => t.platform === 'youtube') && (
-          <div className="mt-4 mb-4 p-4 bg-red-900/30 border border-red-500/50 rounded-lg">
-            <div className="flex items-start gap-3">
-              <span className="text-2xl">⚠️</span>
-              <div className="flex-1">
-                <h3 className="text-red-300 font-semibold mb-1">YouTube Playback Notice</h3>
-                <p className="text-red-200 text-sm">
-                  Some YouTube videos may not be playable due to licensing restrictions.
-                  If a video fails to play, you'll see a link to open it directly on YouTube.
-                </p>
+        {/* Main content */}
+        <main className={`flex-1 overflow-y-auto px-4 py-8 transition-all duration-300 ${currentTrack ? 'pb-56' : 'pb-8'}`}>
+          <div className="max-w-5xl mx-auto">
+            <h1 className="text-4xl font-bold text-white mb-8">Search Music</h1>
+
+            <SearchBar
+              onSearch={handleSearch}
+              isSearching={isSearching}
+              selectedPlatforms={selectedPlatforms}
+              onPlatformsChange={setSelectedPlatforms}
+            />
+
+            {/* Content Tabs */}
+            {activePlaylist && (
+              <div className="mt-6 flex items-center gap-1 border-b border-white/10">
+                <button
+                  onClick={() => setActiveTab('search')}
+                  className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
+                    activeTab === 'search'
+                      ? 'text-white border-white'
+                      : 'text-gray-400 border-transparent hover:text-gray-200'
+                  }`}
+                >
+                  Search Results
+                  {tracks.length > 0 && (
+                    <span className="ml-2 text-xs text-gray-500">({tracks.length})</span>
+                  )}
+                </button>
+                <button
+                  onClick={() => setActiveTab('playlist')}
+                  className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
+                    activeTab === 'playlist'
+                      ? 'text-white border-white'
+                      : 'text-gray-400 border-transparent hover:text-gray-200'
+                  }`}
+                >
+                  📋 {activePlaylist.name}
+                  {playlistTracks.length > 0 && (
+                    <span className="ml-2 text-xs text-gray-500">({playlistTracks.length})</span>
+                  )}
+                </button>
               </div>
-            </div>
-          </div>
-        )}
+            )}
 
-        {tracks.length > 0 && (
-          <TrackList
-            tracks={tracks}
-            onPlay={setCurrentTrack}
-            onTogglePlay={handleTogglePlay}
-            currentTrack={currentTrack}
-            isPlaying={isPlaying}
-          />
-        )}
+            {/* YouTube Warning Banner */}
+            {activeTab === 'search' && tracks.length > 0 && tracks.some(t => t.platform === 'youtube') && (
+              <div className="mt-4 mb-4 p-4 bg-red-900/30 border border-red-500/50 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <span className="text-2xl">⚠️</span>
+                  <div className="flex-1">
+                    <h3 className="text-red-300 font-semibold mb-1">YouTube Playback Notice</h3>
+                    <p className="text-red-200 text-sm">
+                      Some YouTube videos may not be playable due to licensing restrictions.
+                      If a video fails to play, you&apos;ll see a link to open it directly on YouTube.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
-        {tracks.length === 0 && !isSearching && (
-          <div className="text-center text-gray-400 mt-12">
-            <p className="text-xl">🎵 Search for your favorite music</p>
+            {/* Loading state for playlist tracks */}
+            {isLoadingTracks && activeTab === 'playlist' && (
+              <div className="mt-8 text-center text-gray-400">
+                <p className="text-xl">Loading playlist tracks...</p>
+              </div>
+            )}
+
+            {/* Track list */}
+            {displayTracks.length > 0 && !isLoadingTracks && (
+              <TrackList
+                tracks={displayTracks}
+                onPlay={setCurrentTrack}
+                onTogglePlay={handleTogglePlay}
+                currentTrack={currentTrack}
+                isPlaying={isPlaying}
+              />
+            )}
+
+            {/* Empty states */}
+            {displayTracks.length === 0 && !isLoadingTracks && activeTab === 'search' && (
+              <div className="text-center text-gray-400 mt-12">
+                <p className="text-xl">🎵 Search for your favorite music</p>
+              </div>
+            )}
+
+            {displayTracks.length === 0 && !isLoadingTracks && activeTab === 'playlist' && (
+              <div className="text-center text-gray-400 mt-12">
+                <p className="text-xl">This playlist is empty</p>
+              </div>
+            )}
           </div>
-        )}
-      </main>
+        </main>
+      </div>
 
       {/* Fixed player at bottom */}
       {currentTrack && (
@@ -418,4 +512,147 @@ export default function SearchPage() {
       )}
     </div>
   );
+}
+
+// ========== Playlist Track Fetchers ==========
+
+async function fetchSpotifyPlaylistTracks(playlistId: string, token: string | null): Promise<Track[]> {
+  if (!token) return [];
+
+  const allTracks: Track[] = [];
+  let url: string | null = `https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=100`;
+
+  while (url) {
+    const response: Response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!response.ok) break;
+
+    const data: any = await response.json();
+
+    for (const item of data.items || []) {
+      const track = item.track;
+      if (!track || !track.id) continue;
+
+      allTracks.push({
+        id: `spotify-${track.id}-${allTracks.length}`,
+        platform: 'spotify',
+        name: track.name,
+        uri: track.uri,
+        artists: track.artists,
+        album: track.album,
+        duration_ms: track.duration_ms,
+        preview_url: track.preview_url,
+      });
+    }
+
+    url = data.next || null;
+  }
+
+  return allTracks;
+}
+
+async function fetchYouTubePlaylistTracks(playlistId: string, token: string | null): Promise<Track[]> {
+  if (!token) return [];
+
+  const allTracks: Track[] = [];
+  let pageToken: string | null = null;
+
+  while (true) {
+    const params = new URLSearchParams({
+      part: 'snippet,contentDetails',
+      playlistId: playlistId,
+      maxResults: '50',
+    });
+    if (pageToken) params.set('pageToken', pageToken);
+
+    const response: Response = await fetch(
+      `https://www.googleapis.com/youtube/v3/playlistItems?${params}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+
+    if (!response.ok) break;
+
+    const data: any = await response.json();
+
+    for (const item of data.items || []) {
+      const videoId = item.contentDetails?.videoId;
+      if (!videoId) continue;
+
+      const snippet = item.snippet || {};
+      const thumbnails = snippet.thumbnails || {};
+      const imageUrl = thumbnails.high?.url || thumbnails.medium?.url || thumbnails.default?.url || '';
+
+      allTracks.push({
+        id: `youtube-${videoId}-${allTracks.length}`,
+        platform: 'youtube',
+        name: snippet.title || 'Unknown',
+        uri: videoId,
+        artists: [{ name: snippet.videoOwnerChannelTitle || snippet.channelTitle || '' }],
+        album: {
+          name: snippet.videoOwnerChannelTitle || snippet.channelTitle || '',
+          images: imageUrl ? [{ url: imageUrl }] : [],
+        },
+        duration_ms: 0,
+        preview_url: null,
+      });
+    }
+
+    pageToken = data.nextPageToken || null;
+    if (!pageToken) break;
+  }
+
+  return allTracks;
+}
+
+async function fetchSoundCloudPlaylistTracks(playlistId: string, token: string | null): Promise<Track[]> {
+  if (!token) return [];
+
+  try {
+    const response: Response = await fetch(
+      `https://api.soundcloud.com/playlists/${playlistId}?representation=compact`,
+      {
+        headers: {
+          Authorization: `OAuth ${token}`,
+          Accept: 'application/json; charset=utf-8',
+        },
+      }
+    );
+
+    if (!response.ok) return [];
+
+    const data: any = await response.json();
+    const tracks: Track[] = [];
+
+    for (const item of data.tracks || []) {
+      if (!item || !item.id) continue;
+
+      let artworkUrl = item.artwork_url || '';
+      if (artworkUrl) {
+        artworkUrl = artworkUrl.replace('-large', '-t500x500');
+      }
+
+      tracks.push({
+        id: `soundcloud-${item.id}-${tracks.length}`,
+        platform: 'soundcloud',
+        name: item.title || 'Unknown Track',
+        uri: item.permalink_url || '',
+        artists: [{ name: item.user?.username || 'Unknown Artist' }],
+        album: {
+          name: item.user?.username || 'Unknown Artist',
+          images: artworkUrl ? [{ url: artworkUrl }] : [],
+        },
+        duration_ms: item.duration || 0,
+        preview_url: item.stream_url || null,
+      });
+    }
+
+    return tracks;
+  } catch (error) {
+    console.error('SoundCloud playlist tracks error:', error);
+    return [];
+  }
 }
