@@ -1,3 +1,5 @@
+import { PlaylistsResponse } from '@/types/playlist';
+
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://127.0.0.1:8080';
 
 export interface ApiResponse<T = any> {
@@ -106,7 +108,7 @@ class ApiClient {
   }
 
   async soundcloudConnect() {
-  return this.request<{ authUrl: string; state: string }>(
+    return this.request<{ authUrl: string; state: string }>(
       '/platforms/soundcloud/connect',
       { method: 'POST' },
       true
@@ -124,6 +126,15 @@ class ApiClient {
   async soundcloudSearch(query: string) {
     return this.request<{ tracks: any[] }>(
       `/platforms/soundcloud/search?q=${encodeURIComponent(query)}`,
+      { method: 'GET' },
+      true
+    );
+  }
+
+  // Playlist endpoints (YouTube & SoundCloud via backend with caching)
+  async getPlatformPlaylists(platform: 'youtube' | 'soundcloud', forceRefresh: boolean = false) {
+    return this.request<PlaylistsResponse>(
+      `/platforms/${platform}/playlists?force_refresh=${forceRefresh}`,
       { method: 'GET' },
       true
     );
