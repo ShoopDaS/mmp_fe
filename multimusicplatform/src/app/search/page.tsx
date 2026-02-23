@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import { useQueue } from '@/hooks/useQueue';
 import { apiClient } from '@/lib/api';
 import { UnifiedPlaylist } from '@/types/playlist';
 import Header from '@/components/layout/Header';
@@ -78,9 +79,12 @@ export default function SearchPage() {
   const [youtubeToken, setYoutubeToken] = useState<string | null>(null);
   const [tracks, setTracks] = useState<Track[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const playerRef = useRef<UnifiedMusicPlayerRef>(null);
+
+  // Queue integration
+  const queue = useQueue();
+  const currentTrack = queue.getCurrentTrack();
   const [selectedPlatforms, setSelectedPlatforms] = useState<PlatformState>({
     spotify: true,
     soundcloud: false,
@@ -366,6 +370,29 @@ export default function SearchPage() {
     }
   };
 
+  // ========== Queue-aware handlers ==========
+
+  /** Play a track from the currently displayed list — replaces the queue */
+  const handlePlayTrack = (track: Track) => {
+    const list = activeTab === 'playlist' ? playlistTracks : tracks;
+    const index = list.findIndex((t) => t.id === track.id);
+    const label =
+      activeTab === 'playlist' && activePlaylist
+        ? activePlaylist.name
+        : 'Search Results';
+    queue.playFromList(list, index >= 0 ? index : 0, label);
+  };
+
+  /** Append a single track to the end of the queue */
+  const handleAddToQueue = (track: Track) => {
+    queue.addToQueue([track]);
+  };
+
+  /** Called when a track finishes playing — advance the queue */
+  const handleTrackEnd = () => {
+    queue.next();
+  };
+
   const handleTogglePlay = () => {
     playerRef.current?.togglePlay();
   };
@@ -472,8 +499,9 @@ export default function SearchPage() {
             {displayTracks.length > 0 && !isLoadingTracks && (
               <TrackList
                 tracks={displayTracks}
-                onPlay={setCurrentTrack}
+                onPlay={handlePlayTrack}
                 onTogglePlay={handleTogglePlay}
+                onAddToQueue={handleAddToQueue}
                 currentTrack={currentTrack}
                 isPlaying={isPlaying}
               />
@@ -507,6 +535,7 @@ export default function SearchPage() {
               ? soundcloudToken || ''
               : youtubeToken || ''
           }
+          onTrackEnd={handleTrackEnd}
           onPlayerStateChange={handlePlayerStateChange}
         />
       )}

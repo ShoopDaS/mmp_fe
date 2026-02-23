@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react';
+
 interface Track {
   id: string;
   name: string;
@@ -18,11 +20,14 @@ interface TrackListProps {
   tracks: Track[];
   onPlay: (track: Track) => void;
   onTogglePlay?: () => void; // For pausing/resuming the current track
+  onAddToQueue?: (track: Track) => void; // Add a single track to the queue
   currentTrack: Track | null;
   isPlaying?: boolean; // Whether the current track is playing
 }
 
-export default function TrackList({ tracks, onPlay, onTogglePlay, currentTrack, isPlaying = false }: TrackListProps) {
+export default function TrackList({ tracks, onPlay, onTogglePlay, onAddToQueue, currentTrack, isPlaying = false }: TrackListProps) {
+  const [addedTrackId, setAddedTrackId] = useState<string | null>(null);
+
   const getPlatformColors = (platform: Track['platform'], isCurrentTrack: boolean) => {
     if (isCurrentTrack) {
       return 'bg-purple-600 border-l-4 border-purple-400';
@@ -52,12 +57,22 @@ export default function TrackList({ tracks, onPlay, onTogglePlay, currentTrack, 
     }
   };
 
+  const handleAddToQueue = (e: React.MouseEvent, track: Track) => {
+    e.stopPropagation();
+    if (onAddToQueue) {
+      onAddToQueue(track);
+      setAddedTrackId(track.id);
+      setTimeout(() => setAddedTrackId(null), 1500);
+    }
+  };
+
   return (
     <div>
       <div className="space-y-2">
         {tracks.map((track) => {
           const isCurrentTrack = currentTrack?.id === track.id;
           const albumImage = track.album.images[0]?.url || '';
+          const justAdded = addedTrackId === track.id;
 
           return (
             <div
@@ -86,6 +101,29 @@ export default function TrackList({ tracks, onPlay, onTogglePlay, currentTrack, 
                 </p>
                 <p className="text-xs text-gray-400 truncate">{track.album.name}</p>
               </div>
+
+              {/* Add to queue button */}
+              {onAddToQueue && (
+                <button
+                  onClick={(e) => handleAddToQueue(e, track)}
+                  className={`p-2 rounded-full transition-all shrink-0 ${
+                    justAdded
+                      ? 'bg-green-600 text-white'
+                      : 'bg-white/10 text-gray-300 hover:bg-white/20 hover:text-white'
+                  }`}
+                  title={justAdded ? 'Added!' : 'Add to queue'}
+                >
+                  {justAdded ? (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                    </svg>
+                  )}
+                </button>
+              )}
 
               {/* Play/Pause indicator */}
               <div className="text-2xl">
