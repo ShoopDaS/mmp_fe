@@ -223,7 +223,7 @@ export default function SearchPage() {
 
     try {
       const searchResponse = await fetch(
-        `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&q=${encodeURIComponent(query)}&maxResults=20`,
+        `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&q=${encodeURIComponent(query)}&maxResults=20&videoEmbeddable=true&videoSyndicated=true`,
         {
           headers: {
             Authorization: `Bearer ${youtubeToken}`,
@@ -252,6 +252,31 @@ export default function SearchPage() {
       const detailsData = await detailsResponse.json();
 
       console.log('📹 [YouTube] Total videos from API:', detailsData.items?.length || 0);
+
+      // ===== RAW VIDEO ATTRIBUTE DUMP =====
+      (detailsData.items || []).forEach((item: any, index: number) => {
+        console.group(`📹 [${index + 1}/${detailsData.items.length}] "${item.snippet?.title?.substring(0, 60)}"`);
+        console.log('Video ID:', item.id);
+        console.log('Channel:', item.snippet?.channelTitle);
+        console.log('--- STATUS ---');
+        console.log('  embeddable:', item.status?.embeddable);
+        console.log('  license:', item.status?.license);
+        console.log('  privacyStatus:', item.status?.privacyStatus);
+        console.log('  publicStatsViewable:', item.status?.publicStatsViewable);
+        console.log('  madeForKids:', item.status?.madeForKids);
+        console.log('  uploadStatus:', item.status?.uploadStatus);
+        console.log('  Full status:', JSON.stringify(item.status, null, 2));
+        console.log('--- CONTENT DETAILS ---');
+        console.log('  duration:', item.contentDetails?.duration);
+        console.log('  definition:', item.contentDetails?.definition);
+        console.log('  projection:', item.contentDetails?.projection);
+        console.log('  licensedContent:', item.contentDetails?.licensedContent);
+        console.log('  regionRestriction:', JSON.stringify(item.contentDetails?.regionRestriction));
+        console.log('  contentRating:', JSON.stringify(item.contentDetails?.contentRating));
+        console.log('  Full contentDetails:', JSON.stringify(item.contentDetails, null, 2));
+        console.groupEnd();
+      });
+      // =====================================
 
       const embeddableVideos = (detailsData.items || [])
         .filter((item: any) => {

@@ -86,6 +86,7 @@ export class YouTubeAdapter implements IPlayerAdapter {
           fs: 0,
           modestbranding: 1,
           rel: 0,
+          origin: window.location.origin, // Required: tells YT who is embedding
         },
         events: {
           onReady: (event: any) => {
@@ -98,7 +99,6 @@ export class YouTubeAdapter implements IPlayerAdapter {
             this.handleStateChange(event.data);
           },
           onError: (event: any) => {
-            // 🚨 FIX: Capture the detailed message and use it to reject the Promise
             const detailedMessage = this.handleError(event.data);
             reject(new Error(detailedMessage)); 
           },
@@ -135,37 +135,68 @@ export class YouTubeAdapter implements IPlayerAdapter {
     this.notifyStateChange();
   }
 
-  // 🚨 FIX: Return the error message string so it can be passed up
   private handleError(errorCode: number): string {
+    const videoId = this.currentTrack ? this.extractVideoId(this.currentTrack.uri) : 'unknown';
+    const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+    
     let message = 'Unknown YouTube error';
+    let debugCategory = 'UNKNOWN';
 
     switch (errorCode) {
       case 2:
         message = 'Invalid video ID';
+        debugCategory = 'INVALID_PARAM';
         break;
       case 5:
         message = 'HTML5 player error';
+        debugCategory = 'HTML5_ERROR';
         break;
       case 100:
         message = 'Video not found or private';
+        debugCategory = 'NOT_FOUND';
         break;
       case 101:
       case 150:
-        message = 'Video cannot be embedded (restricted by owner). This video was filtered during search but may have changed.';
+        message = 'Video cannot be embedded (restricted by owner)';
+        debugCategory = 'EMBED_RESTRICTED';
         break;
     }
 
-    console.error('❌ [YouTube] Error:', message, errorCode);
+    // ===== ENHANCED DEBUG LOGGING =====
+    console.group(`❌ [YouTube] Playback Error`);
+    console.error(`Error Code: ${errorCode}`);
+    console.error(`Category: ${debugCategory}`);
+    console.error(`Video ID: ${videoId}`);
+    console.error(`Video URL: ${videoUrl}`);
+    console.error(`Track Name: ${this.currentTrack?.name || 'unknown'}`);
+    console.error(`Track Artist: ${this.currentTrack?.artists?.map(a => a.name).join(', ') || 'unknown'}`);
+    console.error(`Message: ${message}`);
+    console.error(`Timestamp: ${new Date().toISOString()}`);
+    console.groupEnd();
+    // ===================================
 
-    // If we have the current track, add video URL to error message
-    if (this.currentTrack && (errorCode === 101 || errorCode === 150)) {
-      const videoUrl = `https://www.youtube.com/watch?v=${this.extractVideoId(this.currentTrack.uri)}`;
+    if (errorCode === 101 || errorCode === 150) {
       message += ` Open on YouTube: ${videoUrl}`;
+    }
+
+    // Dispatch custom event for the debug overlay to pick up
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('yt-playback-error', {
+        detail: {
+          errorCode,
+          debugCategory,
+          videoId,
+          videoUrl,
+          trackName: this.currentTrack?.name || 'unknown',
+          trackArtist: this.currentTrack?.artists?.map(a => a.name).join(', ') || 'unknown',
+          message,
+          timestamp: new Date().toISOString(),
+        }
+      }));
     }
 
     this.notifyError(new Error(message));
     
-    // 🚨 FIX: Destroy the iframe immediately so it doesn't get stuck in the background
     this.cleanup();
 
     return message;
