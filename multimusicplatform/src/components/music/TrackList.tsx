@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
 interface Track {
   id: string;
@@ -27,6 +27,20 @@ interface TrackListProps {
 
 export default function TrackList({ tracks, onPlay, onTogglePlay, onAddToQueue, currentTrack, isPlaying = false }: TrackListProps) {
   const [addedTrackId, setAddedTrackId] = useState<string | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    if (!openMenuId) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpenMenuId(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [openMenuId]);
 
   const getPlatformColors = (platform: Track['platform'], isCurrentTrack: boolean) => {
     if (isCurrentTrack) {
@@ -102,28 +116,51 @@ export default function TrackList({ tracks, onPlay, onTogglePlay, onAddToQueue, 
                 <p className="text-xs text-gray-400 truncate">{track.album.name}</p>
               </div>
 
-              {/* Add to queue button */}
-              {onAddToQueue && (
+              {/* Track menu */}
+              <div className="relative shrink-0" ref={openMenuId === track.id ? menuRef : undefined}>
                 <button
-                  onClick={(e) => handleAddToQueue(e, track)}
-                  className={`p-2 rounded-full transition-all shrink-0 ${
-                    justAdded
-                      ? 'bg-green-600 text-white'
-                      : 'bg-white/10 text-gray-300 hover:bg-white/20 hover:text-white'
-                  }`}
-                  title={justAdded ? 'Added!' : 'Add to queue'}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setOpenMenuId(openMenuId === track.id ? null : track.id);
+                  }}
+                  className="p-2 rounded-full bg-white/10 text-gray-300 hover:bg-white/20 hover:text-white transition-all"
+                  title="More options"
                 >
-                  {justAdded ? (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                  ) : (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                    </svg>
-                  )}
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                  </svg>
                 </button>
-              )}
+                {openMenuId === track.id && (
+                  <div className="absolute right-0 top-full mt-1 w-44 bg-gray-800 border border-white/10 rounded-lg shadow-xl z-50 overflow-hidden">
+                    {onAddToQueue && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleAddToQueue(e, track);
+                          setOpenMenuId(null);
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors"
+                      >
+                        {justAdded ? (
+                          <>
+                            <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                            <span className="text-green-400">Added!</span>
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                            </svg>
+                            Add to queue
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {/* Play/Pause indicator */}
               <div className="text-2xl">
