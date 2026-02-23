@@ -5,6 +5,9 @@ import { IPlayerAdapter, Track, PlayerState } from '@/lib/player-adapters/IPlaye
 import { SpotifyAdapter } from '@/lib/player-adapters/SpotifyAdapter';
 import { SoundCloudAdapter } from '@/lib/player-adapters/SoundCloudAdapter';
 import { YouTubeAdapter } from '@/lib/player-adapters/YouTubeAdapter';
+import { useQueue } from '@/hooks/useQueue';
+import { LoopMode } from '@/types/queue';
+import QueueManager from '@/components/queue/QueueManager';
 
 interface UnifiedMusicPlayerProps {
   track: Track;
@@ -41,8 +44,11 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
   const adaptersMap = useRef<Record<string, IPlayerAdapter>>({});
   const activePlatformRef = useRef<string | null>(null);
   
-  const isLoopingRef = useRef(false);
+  const loopModeRef = useRef<LoopMode>('none');
   const currentTrackRef = useRef<Track>(track); // Ensures callbacks always see the latest track
+
+  // Queue integration
+  const queue = useQueue();
 
   // Keep track ref updated for closures
   useEffect(() => {
@@ -116,7 +122,7 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
 
       newAdapter.onTrackEnd(() => {
         if (activePlatformRef.current !== platform) return;
-        if (isLoopingRef.current) {
+        if (loopModeRef.current === 'one') {
           newAdapter.play(currentTrackRef.current);
         } else if (onTrackEnd) {
           onTrackEnd();
@@ -175,8 +181,9 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
   }, []);
 
   // --- Controls & UI ---
-  useEffect(() => { isLoopingRef.current = playerState.isLooping; }, [playerState.isLooping]);
-  
+  // Keep loopModeRef in sync with queue context
+  useEffect(() => { loopModeRef.current = queue.loopMode; }, [queue.loopMode]);
+
   const togglePlay = () => adaptersMap.current[track.platform]?.togglePlay();
   useImperativeHandle(ref, () => ({ togglePlay }));
 
@@ -186,7 +193,16 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => adaptersMap.current[track.platform]?.seek(Number(e.target.value));
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => adaptersMap.current[track.platform]?.setVolume(Number(e.target.value));
-  const toggleLoop = () => adaptersMap.current[track.platform]?.setLoop(!playerState.isLooping);
+  const handlePrevious = () => queue.previous();
+  const handleNext = () => queue.next();
+
+  const getLoopModeLabel = () => {
+    switch (queue.loopMode) {
+      case 'none': return null;
+      case 'one': return '1';
+      case 'all': return 'All';
+    }
+  };
 
   const formatTime = (ms: number): string => {
     const totalSeconds = Math.floor(ms / 1000);
@@ -273,12 +289,36 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
           </div>
 
           <div className="flex items-center gap-3">
-            <button onClick={toggleLoop} className={`p-2 rounded-full transition-all ${playerState.isLooping ? 'bg-white text-black' : 'bg-gray-700 text-white hover:bg-gray-600'}`}>
+            {/* Loop mode button */}
+            <button
+              onClick={queue.cycleLoopMode}
+              className={`p-2 rounded-full transition-all relative ${queue.loopMode !== 'none' ? 'bg-white text-black' : 'bg-gray-700 text-white hover:bg-gray-600'}`}
+              title={`Loop: ${queue.loopMode === 'none' ? 'Off' : queue.loopMode === 'one' ? 'One' : 'All'}`}
+            >
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" /></svg>
+              {getLoopModeLabel() && (
+                <span className="absolute -top-1 -right-1 text-[9px] font-bold bg-purple-500 text-white rounded-full w-3.5 h-3.5 flex items-center justify-center">
+                  {getLoopModeLabel()}
+                </span>
+              )}
             </button>
+
+            {/* Previous */}
+            <button onClick={handlePrevious} className="p-2 bg-gray-700 rounded-full hover:bg-gray-600 transition-colors" title="Previous">
+              <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M8.445 14.832A1 1 0 0010 14v-2.798l5.445 3.63A1 1 0 0017 14V6a1 1 0 00-1.555-.832L10 8.798V6a1 1 0 00-1.555-.832l-6 4a1 1 0 000 1.664l6 4z" /></svg>
+            </button>
+
+            {/* Play/Pause */}
             <button onClick={togglePlay} className={`w-12 h-12 ${getPlatformColor()} rounded-full flex items-center justify-center hover:scale-110 transition-transform shadow-lg`}>
               <span className="text-2xl text-white">{playerState.isPlaying ? '⏸️' : '▶️'}</span>
             </button>
+
+            {/* Next */}
+            <button onClick={handleNext} className="p-2 bg-gray-700 rounded-full hover:bg-gray-600 transition-colors" title="Next">
+              <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M11.555 5.168A1 1 0 0010 6v2.798L4.555 5.168A1 1 0 003 6v8a1 1 0 001.555.832L10 11.202V14a1 1 0 001.555.832l6-4a1 1 0 000-1.664l-6-4z" /></svg>
+            </button>
+
+            {/* Volume */}
             <div className="relative">
               <button onClick={() => setShowVolume(!showVolume)} className="p-2 bg-gray-700 rounded-full hover:bg-gray-600 transition-colors">
                 <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z" clipRule="evenodd" /></svg>
@@ -289,6 +329,11 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
                   <div className="text-xs text-center text-gray-300 mt-1">{Math.round(playerState.volume * 100)}%</div>
                 </div>
               )}
+            </div>
+
+            {/* Queue Manager */}
+            <div className="relative">
+              <QueueManager />
             </div>
           </div>
         </div>
