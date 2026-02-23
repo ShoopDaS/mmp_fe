@@ -18,6 +18,8 @@ export interface QueueActions {
   playFromList: (tracks: Track[], startIndex: number, sourceLabel?: string) => void;
   /** Append one or more tracks to the end of the queue */
   addToQueue: (tracks: Track[]) => void;
+  /** Insert a track right after the currently playing track */
+  playNext: (track: Track) => void;
   /** Remove a track at a specific queue index */
   removeFromQueue: (index: number) => void;
   /** Move a track from one position to another */

@@ -21,12 +21,13 @@ interface TrackListProps {
   onPlay: (track: Track) => void;
   onTogglePlay?: () => void; // For pausing/resuming the current track
   onAddToQueue?: (track: Track) => void; // Add a single track to the queue
+  onPlayNext?: (track: Track) => void; // Insert track right after the currently playing track
   currentTrack: Track | null;
   isPlaying?: boolean; // Whether the current track is playing
 }
 
-export default function TrackList({ tracks, onPlay, onTogglePlay, onAddToQueue, currentTrack, isPlaying = false }: TrackListProps) {
-  const [addedTrackId, setAddedTrackId] = useState<string | null>(null);
+export default function TrackList({ tracks, onPlay, onTogglePlay, onAddToQueue, onPlayNext, currentTrack, isPlaying = false }: TrackListProps) {
+  const [feedbackId, setFeedbackId] = useState<{ trackId: string; action: 'queued' | 'next' } | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -71,12 +72,24 @@ export default function TrackList({ tracks, onPlay, onTogglePlay, onAddToQueue, 
     }
   };
 
+  const showFeedback = (trackId: string, action: 'queued' | 'next') => {
+    setFeedbackId({ trackId, action });
+    setTimeout(() => setFeedbackId(null), 1500);
+  };
+
   const handleAddToQueue = (e: React.MouseEvent, track: Track) => {
     e.stopPropagation();
     if (onAddToQueue) {
       onAddToQueue(track);
-      setAddedTrackId(track.id);
-      setTimeout(() => setAddedTrackId(null), 1500);
+      showFeedback(track.id, 'queued');
+    }
+  };
+
+  const handlePlayNext = (e: React.MouseEvent, track: Track) => {
+    e.stopPropagation();
+    if (onPlayNext) {
+      onPlayNext(track);
+      showFeedback(track.id, 'next');
     }
   };
 
@@ -86,7 +99,7 @@ export default function TrackList({ tracks, onPlay, onTogglePlay, onAddToQueue, 
         {tracks.map((track) => {
           const isCurrentTrack = currentTrack?.id === track.id;
           const albumImage = track.album.images[0]?.url || '';
-          const justAdded = addedTrackId === track.id;
+          const feedback = feedbackId?.trackId === track.id ? feedbackId.action : null;
 
           return (
             <div
@@ -132,16 +145,40 @@ export default function TrackList({ tracks, onPlay, onTogglePlay, onAddToQueue, 
                 </button>
                 {openMenuId === track.id && (
                   <div className="absolute right-0 top-full mt-1 w-44 bg-gray-800 border border-white/10 rounded-lg shadow-xl z-50 overflow-hidden">
+                    {onPlayNext && (
+                      <button
+                        onClick={(e) => {
+                          handlePlayNext(e, track);
+                          setOpenMenuId(null);
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors"
+                      >
+                        {feedback === 'next' ? (
+                          <>
+                            <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                            <span className="text-green-400">Playing next!</span>
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                            </svg>
+                            Play next
+                          </>
+                        )}
+                      </button>
+                    )}
                     {onAddToQueue && (
                       <button
                         onClick={(e) => {
-                          e.stopPropagation();
                           handleAddToQueue(e, track);
                           setOpenMenuId(null);
                         }}
                         className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors"
                       >
-                        {justAdded ? (
+                        {feedback === 'queued' ? (
                           <>
                             <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />

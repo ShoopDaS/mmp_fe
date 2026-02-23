@@ -388,6 +388,11 @@ export default function SearchPage() {
     queue.addToQueue([track]);
   };
 
+  /** Insert a track right after the currently playing track */
+  const handlePlayNext = (track: Track) => {
+    queue.playNext(track);
+  };
+
   /** Called when a track finishes playing — advance the queue */
   const handleTrackEnd = () => {
     queue.next();
@@ -502,6 +507,7 @@ export default function SearchPage() {
                 onPlay={handlePlayTrack}
                 onTogglePlay={handleTogglePlay}
                 onAddToQueue={handleAddToQueue}
+                onPlayNext={handlePlayNext}
                 currentTrack={currentTrack}
                 isPlaying={isPlaying}
               />

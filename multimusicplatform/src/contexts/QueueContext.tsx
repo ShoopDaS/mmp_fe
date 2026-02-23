@@ -37,6 +37,19 @@ export function QueueProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
+  const playNext = useCallback((track: Track) => {
+    setState((prev) => {
+      if (prev.currentIndex === -1 || prev.tracks.length === 0) {
+        // Nothing playing — just start playing this track
+        return { ...prev, tracks: [track], currentIndex: 0 };
+      }
+      const insertAt = prev.currentIndex + 1;
+      const newTracks = [...prev.tracks];
+      newTracks.splice(insertAt, 0, track);
+      return { ...prev, tracks: newTracks };
+    });
+  }, []);
+
   const removeFromQueue = useCallback((index: number) => {
     setState((prev) => {
       if (index < 0 || index >= prev.tracks.length) return prev;
@@ -171,6 +184,7 @@ export function QueueProvider({ children }: { children: ReactNode }) {
       ...state,
       playFromList,
       addToQueue,
+      playNext,
       removeFromQueue,
       moveTrack,
       next,
@@ -185,6 +199,7 @@ export function QueueProvider({ children }: { children: ReactNode }) {
       state,
       playFromList,
       addToQueue,
+      playNext,
       removeFromQueue,
       moveTrack,
       next,
