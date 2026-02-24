@@ -158,14 +158,14 @@ export default function TrackList({ tracks, onPlay, onTogglePlay, onAddToQueue, 
                             <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                             </svg>
-                            <span className="text-green-400">Playing next!</span>
+                            <span className="text-green-400">Up next!</span>
                           </>
                         ) : (
                           <>
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
                             </svg>
-                            Play next
+                            Add next in queue
                           </>
                         )}
                       </button>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useQueue } from '@/hooks/useQueue';
 
 export default function QueueManager() {
@@ -12,9 +12,15 @@ export default function QueueManager() {
     sourceLabel,
     jumpTo,
     removeFromQueue,
+    moveTrack,
     clearQueue,
     cycleLoopMode,
   } = useQueue();
+
+  // Drag-and-drop state
+  const [dragVisualIndex, setDragVisualIndex] = useState<number | null>(null);
+  const [dragOverVisualIndex, setDragOverVisualIndex] = useState<number | null>(null);
+  const dragNodeRef = useRef<HTMLDivElement | null>(null);
 
   const currentTrack = currentIndex >= 0 && currentIndex < tracks.length ? tracks[currentIndex] : null;
   const upcomingTracks = currentIndex >= 0 ? tracks.slice(currentIndex + 1) : [];
@@ -35,6 +41,58 @@ export default function QueueManager() {
       case 'all': return 'All';
     }
   };
+
+  // --- Drag-and-drop handlers ---
+  const handleDragStart = useCallback((e: React.DragEvent<HTMLDivElement>, visualIndex: number) => {
+    setDragVisualIndex(visualIndex);
+    dragNodeRef.current = e.currentTarget;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(visualIndex));
+    // Make the drag image slightly transparent
+    requestAnimationFrame(() => {
+      if (dragNodeRef.current) {
+        dragNodeRef.current.style.opacity = '0.4';
+      }
+    });
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>, visualIndex: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverVisualIndex(visualIndex);
+  }, []);
+
+  const handleDragEnter = useCallback((e: React.DragEvent<HTMLDivElement>, visualIndex: number) => {
+    e.preventDefault();
+    setDragOverVisualIndex(visualIndex);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    // Only clear if leaving the actual element (not entering a child)
+    if (e.currentTarget === e.target) {
+      setDragOverVisualIndex(null);
+    }
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>, toVisualIndex: number) => {
+    e.preventDefault();
+    if (dragVisualIndex !== null && dragVisualIndex !== toVisualIndex) {
+      const fromQueueIndex = currentIndex + 1 + dragVisualIndex;
+      const toQueueIndex = currentIndex + 1 + toVisualIndex;
+      moveTrack(fromQueueIndex, toQueueIndex);
+    }
+    setDragVisualIndex(null);
+    setDragOverVisualIndex(null);
+  }, [dragVisualIndex, currentIndex, moveTrack]);
+
+  const handleDragEnd = useCallback(() => {
+    if (dragNodeRef.current) {
+      dragNodeRef.current.style.opacity = '1';
+    }
+    setDragVisualIndex(null);
+    setDragOverVisualIndex(null);
+    dragNodeRef.current = null;
+  }, []);
 
   if (tracks.length === 0) return null;
 
@@ -114,23 +172,48 @@ export default function QueueManager() {
             </div>
           )}
 
-          {/* Upcoming Tracks */}
+          {/* Upcoming Tracks (drag-and-drop enabled) */}
           <div className="flex-1 overflow-y-auto">
             {upcomingTracks.length === 0 ? (
               <div className="p-4 text-center text-gray-500 text-sm">No upcoming tracks</div>
             ) : (
               <>
                 <p className="px-3 pt-2 pb-1 text-gray-500 text-[10px] uppercase tracking-wider font-semibold">
-                  Up Next ({upcomingTracks.length})
+                  Up Next ({upcomingTracks.length}) &middot; Drag to reorder
                 </p>
                 {upcomingTracks.map((track, i) => {
                   const queueIndex = currentIndex + 1 + i;
+                  const isDragging = dragVisualIndex === i;
+                  const isDragOver = dragOverVisualIndex === i;
+
                   return (
                     <div
                       key={`${track.id}-${queueIndex}`}
-                      className="flex items-center gap-2 px-3 py-2 hover:bg-white/5 group cursor-pointer"
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, i)}
+                      onDragOver={(e) => handleDragOver(e, i)}
+                      onDragEnter={(e) => handleDragEnter(e, i)}
+                      onDragLeave={handleDragLeave}
+                      onDrop={(e) => handleDrop(e, i)}
+                      onDragEnd={handleDragEnd}
+                      className={`
+                        flex items-center gap-2 px-3 py-2 group cursor-pointer select-none transition-colors
+                        ${isDragging ? 'opacity-40' : 'hover:bg-white/5'}
+                        ${isDragOver && !isDragging ? 'border-t-2 border-purple-500' : 'border-t-2 border-transparent'}
+                      `}
                       onClick={() => jumpTo(queueIndex)}
                     >
+                      {/* Drag handle */}
+                      <span
+                        className="text-gray-600 group-hover:text-gray-400 cursor-grab active:cursor-grabbing shrink-0"
+                        title="Drag to reorder"
+                        onMouseDown={(e) => e.stopPropagation()}
+                      >
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path d="M7 2a2 2 0 10.001 4.001A2 2 0 007 2zm0 6a2 2 0 10.001 4.001A2 2 0 007 8zm0 6a2 2 0 10.001 4.001A2 2 0 007 14zm6-8a2 2 0 10-.001-4.001A2 2 0 0013 6zm0 2a2 2 0 10.001 4.001A2 2 0 0013 8zm0 6a2 2 0 10.001 4.001A2 2 0 0013 14z" />
+                        </svg>
+                      </span>
+
                       <span className="text-gray-500 text-xs w-5 text-right shrink-0">{i + 1}</span>
                       {track.album.images[0]?.url && (
                         <img src={track.album.images[0].url} alt="" className="w-8 h-8 rounded" />
