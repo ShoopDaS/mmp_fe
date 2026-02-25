@@ -63,6 +63,31 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
     setError('');
   }, [track.id]);
 
+  // Auto-advance: when a track errors (e.g. removed from Spotify), skip to the
+  // next queue item after 5 seconds so the user doesn't have to do it manually.
+  const [autoSkipCountdown, setAutoSkipCountdown] = useState<number | null>(null);
+  useEffect(() => {
+    if (!error) {
+      setAutoSkipCountdown(null);
+      return;
+    }
+    setAutoSkipCountdown(5);
+    const tick = setInterval(() => {
+      setAutoSkipCountdown(prev => {
+        if (prev === null || prev <= 1) return null;
+        return prev - 1;
+      });
+    }, 1000);
+    const skip = setTimeout(() => {
+      queue.next();
+    }, 5000);
+    return () => {
+      clearInterval(tick);
+      clearTimeout(skip);
+      setAutoSkipCountdown(null);
+    };
+  }, [error]);
+
   // 1. Manage Platform Switching & Initialization
   useEffect(() => {
     const platform = track.platform;
@@ -259,6 +284,9 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
             {errorMessage ? (
               <div className="flex items-center gap-2 mt-0.5">
                 <p className="text-sm text-red-400 truncate">⚠️ {errorMessage}</p>
+                {autoSkipCountdown !== null && (
+                  <span className="shrink-0 text-xs text-gray-500">skipping in {autoSkipCountdown}s</span>
+                )}
                 {youtubeUrl && (
                   <a href={youtubeUrl} target="_blank" rel="noopener noreferrer" className="shrink-0 text-xs px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white rounded transition-colors">
                     Open on YouTube
