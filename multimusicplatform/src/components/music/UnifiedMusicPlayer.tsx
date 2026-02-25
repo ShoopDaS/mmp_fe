@@ -71,7 +71,7 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
       setAutoSkipCountdown(null);
       return;
     }
-    setAutoSkipCountdown(5);
+    setAutoSkipCountdown(10);
     const tick = setInterval(() => {
       setAutoSkipCountdown(prev => {
         if (prev === null || prev <= 1) return null;
@@ -80,7 +80,7 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
     }, 1000);
     const skip = setTimeout(() => {
       queue.next();
-    }, 5000);
+    }, 10000);
     return () => {
       clearInterval(tick);
       clearTimeout(skip);
@@ -184,6 +184,9 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
     if (readyPlatform === track.platform && adapter && playerState.canPlay) {
       adapter.play(track).catch((err) => {
         if (!isPlayCancelled && activePlatformRef.current === track.platform) {
+          // Stop whatever was playing before — the new track failed so nothing
+          // should continue playing in the background.
+          adapter.pause().catch(() => {});
           setError(err.message);
         }
       });
