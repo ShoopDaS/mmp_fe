@@ -28,6 +28,7 @@ export class SpotifyAdapter implements IPlayerAdapter {
   private trackEndCallback?: () => void;
   private errorCallback?: (error: Error) => void;
   private progressInterval?: NodeJS.Timeout;
+  private playAbortController: AbortController | null = null;
 
   async initialize(token: string): Promise<boolean> {
     this.token = token;
@@ -159,8 +160,14 @@ export class SpotifyAdapter implements IPlayerAdapter {
   async play(track: Track): Promise<void> {
     console.log('🎵 [Spotify] Playing:', track.name);
 
+    // Cancel any in-flight play request from a previous song switch
+    if (this.playAbortController) {
+      this.playAbortController.abort();
+    }
+    this.playAbortController = new AbortController();
+
     if (this.isPremium && this.deviceId) {
-      await this.playPremium(track);
+      await this.playPremium(track, this.playAbortController.signal);
     } else if (track.preview_url) {
       this.playPreview(track);
     } else {
@@ -168,9 +175,8 @@ export class SpotifyAdapter implements IPlayerAdapter {
     }
   }
 
-  private async playPremium(track: Track): Promise<void> {
+  private async playPremium(track: Track, signal?: AbortSignal): Promise<void> {
     try {
-      // 🚨 Corrected to the official Spotify API endpoint
       const res = await fetch(
         `https://api.spotify.com/v1/me/player/play?device_id=${this.deviceId}`,
         {
@@ -180,25 +186,48 @@ export class SpotifyAdapter implements IPlayerAdapter {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${this.token}`,
           },
+          signal,
         }
       );
 
       if (res.ok || res.status === 204) {
         console.log('✅ [Spotify] Playing Premium');
         this.startProgressTracking();
-      } else {
-        console.error('❌ [Spotify] Play failed:', res.status);
-        if (res.status === 403 || res.status === 404) {
+      } else if (res.status === 403 || res.status === 404) {
+        // Parse the Spotify error body to distinguish a genuine "PREMIUM_REQUIRED"
+        // from transient errors (e.g. NOT_PLAYING_LOCALLY, device not ready) that
+        // can appear when switching songs rapidly.
+        let reason = 'UNKNOWN';
+        try {
+          const body = await res.json();
+          reason = body?.error?.reason ?? 'UNKNOWN';
+        } catch { /* ignore parse failures */ }
+
+        if (reason === 'PREMIUM_REQUIRED') {
+          console.warn('❌ [Spotify] Premium required, falling back to preview mode');
           this.isPremium = false;
           this.initPreviewMode();
           if (track.preview_url) {
-             this.playPreview(track);
+            this.playPreview(track);
           } else {
-             throw new Error("Premium account required for this track.");
+            throw new Error('Premium account required for this track.');
           }
+        } else {
+          // Transient error — device not ready, rate limit, stale context, etc.
+          // Do NOT downgrade isPremium so the next play attempt still uses premium.
+          console.warn(`⚠️ [Spotify] Transient play error ${res.status} (reason: ${reason}), retaining premium status`);
+          throw new Error(`Play failed: ${res.status} (${reason})`);
         }
+      } else {
+        console.error('❌ [Spotify] Play failed:', res.status);
+        throw new Error(`Play failed: ${res.status}`);
       }
     } catch (e) {
+      if (e instanceof Error && e.name === 'AbortError') {
+        // Normal cancellation when the user switched songs — not an error
+        console.log('🚫 [Spotify] Play request cancelled (song changed)');
+        return;
+      }
       console.error('❌ [Spotify] Error:', e);
       this.notifyError(e as Error);
       throw e;
@@ -288,6 +317,11 @@ export class SpotifyAdapter implements IPlayerAdapter {
   cleanup(): void {
     console.log('🧹 [Spotify] Cleaning up...');
     this.stopProgressTracking();
+
+    if (this.playAbortController) {
+      this.playAbortController.abort();
+      this.playAbortController = null;
+    }
 
     if (this.player) {
       this.player.disconnect();
