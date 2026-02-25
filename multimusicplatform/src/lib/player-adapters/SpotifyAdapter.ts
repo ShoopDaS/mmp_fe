@@ -211,17 +211,19 @@ export class SpotifyAdapter implements IPlayerAdapter {
       }
 
       if (res.status === 403 || res.status === 404) {
-        // Parse error body to distinguish genuine PREMIUM_REQUIRED from transient errors.
+        // Parse error body to distinguish error classes.
         // Spotify format: { error: { status, message, reason } }
         let reason = 'UNKNOWN';
+        let message = '';
         let rawBody = '';
         try {
           rawBody = await res.text();
           const parsed = JSON.parse(rawBody);
-          reason = parsed?.error?.reason ?? 'UNKNOWN';
+          reason  = parsed?.error?.reason  ?? 'UNKNOWN';
+          message = parsed?.error?.message ?? '';
         } catch { /* ignore parse failures */ }
 
-        console.warn(`⚠️ [Spotify] ${res.status} reason="${reason}" body="${rawBody.slice(0, 200)}"`);
+        console.warn(`⚠️ [Spotify] ${res.status} reason="${reason}" message="${message}"`);
 
         if (reason === 'PREMIUM_REQUIRED') {
           console.warn('❌ [Spotify] Premium required — falling back to preview mode');
@@ -233,6 +235,13 @@ export class SpotifyAdapter implements IPlayerAdapter {
             throw new Error('Premium account required for this track.');
           }
           return;
+        }
+
+        // "Restriction violated" = track removed from Spotify or unavailable in
+        // this market.  This is permanent for the track — don't retry, don't
+        // touch isPremium.
+        if (message.includes('Restriction violated')) {
+          throw new Error('This track is not available on Spotify (removed or region-restricted).');
         }
 
         // Any other 403/404 is transient (device mid-transition, OAuth layer, etc.).
