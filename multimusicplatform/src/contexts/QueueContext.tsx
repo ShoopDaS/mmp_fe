@@ -8,6 +8,7 @@ const initialState: QueueState = {
   tracks: [],
   currentIndex: -1,
   loopMode: 'none',
+  shuffle: false,
   sourceLabel: null,
 };
 
@@ -112,6 +113,16 @@ export function QueueProvider({ children }: { children: ReactNode }) {
         return prev;
       }
 
+      // Shuffle: jump to a random track (different from current if possible)
+      if (prev.shuffle && prev.tracks.length > 1) {
+        let randomIndex: number;
+        do {
+          randomIndex = Math.floor(Math.random() * prev.tracks.length);
+        } while (randomIndex === prev.currentIndex);
+        advanced = true;
+        return { ...prev, currentIndex: randomIndex };
+      }
+
       const nextIndex = prev.currentIndex + 1;
 
       if (nextIndex < prev.tracks.length) {
@@ -170,6 +181,10 @@ export function QueueProvider({ children }: { children: ReactNode }) {
     setState((prev) => ({ ...prev, loopMode: mode }));
   }, []);
 
+  const toggleShuffle = useCallback(() => {
+    setState((prev) => ({ ...prev, shuffle: !prev.shuffle }));
+  }, []);
+
   const clearQueue = useCallback(() => {
     setState((prev) => ({ ...prev, tracks: [], currentIndex: -1, sourceLabel: null }));
   }, []);
@@ -192,6 +207,7 @@ export function QueueProvider({ children }: { children: ReactNode }) {
       jumpTo,
       cycleLoopMode,
       setLoopMode,
+      toggleShuffle,
       clearQueue,
       getCurrentTrack,
     }),
@@ -207,6 +223,7 @@ export function QueueProvider({ children }: { children: ReactNode }) {
       jumpTo,
       cycleLoopMode,
       setLoopMode,
+      toggleShuffle,
       clearQueue,
       getCurrentTrack,
     ],

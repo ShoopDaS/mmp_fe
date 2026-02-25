@@ -9,6 +9,8 @@ export interface QueueState {
   currentIndex: number;
   /** Loop mode: none, repeat one, repeat all */
   loopMode: LoopMode;
+  /** Whether shuffle is active (next track will be random) */
+  shuffle: boolean;
   /** Label describing the source (e.g. "Search Results", playlist name) */
   sourceLabel: string | null;
 }
@@ -34,6 +36,8 @@ export interface QueueActions {
   cycleLoopMode: () => void;
   /** Set a specific loop mode */
   setLoopMode: (mode: LoopMode) => void;
+  /** Toggle shuffle mode on/off */
+  toggleShuffle: () => void;
   /** Clear the queue entirely */
   clearQueue: () => void;
   /** Get the currently playing track, or null */
