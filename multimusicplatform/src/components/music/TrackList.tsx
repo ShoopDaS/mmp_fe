@@ -112,6 +112,11 @@ export default function TrackList({ tracks, onPlay, onTogglePlay, onAddToQueue, 
               `}
               onClick={() => handleTrackClick(track)}
             >
+              {/* Play/Pause indicator */}
+              <div className="text-2xl shrink-0">
+                {isCurrentTrack && isPlaying ? '⏸️' : '▶️'}
+              </div>
+
               {/* Album art */}
               {albumImage && (
                 <img
@@ -130,7 +135,7 @@ export default function TrackList({ tracks, onPlay, onTogglePlay, onAddToQueue, 
                 <p className="text-xs text-gray-400 truncate">{track.album.name}</p>
               </div>
 
-              {/* Track menu */}
+              {/* Track menu (kebab) */}
               <div className="relative shrink-0" ref={openMenuId === track.id ? menuRef : undefined}>
                 <button
                   onClick={(e) => {
@@ -198,11 +203,6 @@ export default function TrackList({ tracks, onPlay, onTogglePlay, onAddToQueue, 
                     )}
                   </div>
                 )}
-              </div>
-
-              {/* Play/Pause indicator */}
-              <div className="text-2xl">
-                {isCurrentTrack && isPlaying ? '⏸️' : '▶️'}
               </div>
             </div>
           );
