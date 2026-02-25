@@ -144,7 +144,7 @@ export default function TrackList({ tracks, onPlay, onTogglePlay, onAddToQueue, 
                   </svg>
                 </button>
                 {openMenuId === track.id && (
-                  <div className="absolute right-0 top-full mt-1 w-44 bg-gray-800 border border-white/10 rounded-lg shadow-xl z-50 overflow-hidden">
+                  <div className="absolute right-0 bottom-full mb-1 w-44 bg-gray-800 border border-white/10 rounded-lg shadow-xl z-50 overflow-hidden">
                     {onPlayNext && (
                       <button
                         onClick={(e) => {
