@@ -63,6 +63,31 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
     setError('');
   }, [track.id]);
 
+  // Auto-advance: when a track errors (e.g. removed from Spotify), skip to the
+  // next queue item after 5 seconds so the user doesn't have to do it manually.
+  const [autoSkipCountdown, setAutoSkipCountdown] = useState<number | null>(null);
+  useEffect(() => {
+    if (!error) {
+      setAutoSkipCountdown(null);
+      return;
+    }
+    setAutoSkipCountdown(10);
+    const tick = setInterval(() => {
+      setAutoSkipCountdown(prev => {
+        if (prev === null || prev <= 1) return null;
+        return prev - 1;
+      });
+    }, 1000);
+    const skip = setTimeout(() => {
+      queue.next();
+    }, 10000);
+    return () => {
+      clearInterval(tick);
+      clearTimeout(skip);
+      setAutoSkipCountdown(null);
+    };
+  }, [error]);
+
   // 1. Manage Platform Switching & Initialization
   useEffect(() => {
     const platform = track.platform;
@@ -159,6 +184,9 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
     if (readyPlatform === track.platform && adapter && playerState.canPlay) {
       adapter.play(track).catch((err) => {
         if (!isPlayCancelled && activePlatformRef.current === track.platform) {
+          // Stop whatever was playing before — the new track failed so nothing
+          // should continue playing in the background.
+          adapter.pause().catch(() => {});
           setError(err.message);
         }
       });
@@ -230,38 +258,15 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
     );
   }
 
-  if (error) {
-    const youtubeUrlMatch = error.match(/https:\/\/www\.youtube\.com\/watch\?v=([a-zA-Z0-9_-]+)/);
-    const youtubeUrl = youtubeUrlMatch ? youtubeUrlMatch[0] : null;
-    const errorMessage = youtubeUrl ? error.split('Open on YouTube:')[0].trim() : error;
-
-    return (
-      <div className="fixed bottom-0 left-0 right-0 bg-black/90 backdrop-blur-lg border-t border-red-500/30 p-4">
-        <div className="max-w-6xl mx-auto">
-          <div className="flex items-center gap-4">
-            <img src={track.album.images[0]?.url} alt={track.album.name} className="w-16 h-16 rounded shadow-lg opacity-50" />
-            <div className="flex-1">
-              <div className="flex items-start gap-2">
-                <span className="text-red-400 text-xl">⚠️</span>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-white mb-1">{track.name}</h3>
-                  <p className="text-red-300 text-sm">{errorMessage}</p>
-                </div>
-              </div>
-            </div>
-            {youtubeUrl && (
-              <a href={youtubeUrl} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-colors flex items-center gap-2">
-                <span>▶️</span> Open on YouTube
-              </a>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // Extract YouTube deep-link if present in the error (YouTube adapter embeds it)
+  const youtubeUrlMatch = error?.match(/https:\/\/www\.youtube\.com\/watch\?v=([a-zA-Z0-9_-]+)/);
+  const youtubeUrl = youtubeUrlMatch ? youtubeUrlMatch[0] : null;
+  const errorMessage = error
+    ? (youtubeUrl ? error.split('Open on YouTube:')[0].trim() : error)
+    : null;
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-black/90 backdrop-blur-lg border-t border-white/10 p-4 z-50">
+    <div className={`fixed bottom-0 left-0 right-0 bg-black/90 backdrop-blur-lg border-t ${error ? 'border-red-500/30' : 'border-white/10'} p-4 z-50`}>
       <div className="max-w-6xl mx-auto">
         <div className="mb-3">
           <input
@@ -276,13 +281,27 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
         </div>
 
         <div className="flex items-center gap-4">
-          <img src={track.album.images[0]?.url} alt={track.album.name} className="w-16 h-16 rounded shadow-lg" />
+          <img src={track.album.images[0]?.url} alt={track.album.name} className={`w-16 h-16 rounded shadow-lg ${error ? 'opacity-50' : ''}`} />
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold text-white truncate">{track.name}</h3>
-            <p className="text-sm text-gray-300 truncate">{track.artists.map(a => a.name).join(', ')}</p>
+            {errorMessage ? (
+              <div className="flex items-center gap-2 mt-0.5">
+                <p className="text-sm text-red-400 truncate">⚠️ {errorMessage}</p>
+                {autoSkipCountdown !== null && (
+                  <span className="shrink-0 text-xs text-gray-500">skipping in {autoSkipCountdown}s</span>
+                )}
+                {youtubeUrl && (
+                  <a href={youtubeUrl} target="_blank" rel="noopener noreferrer" className="shrink-0 text-xs px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white rounded transition-colors">
+                    Open on YouTube
+                  </a>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-300 truncate">{track.artists.map(a => a.name).join(', ')}</p>
+            )}
             <div className="flex items-center gap-2 mt-1">
               <span className={`text-xs px-2 py-0.5 rounded ${getPlatformColor()} text-white`}>{track.platform.toUpperCase()}</span>
-              {track.platform === 'spotify' && (
+              {track.platform === 'spotify' && !error && (
                 <span className="text-xs text-gray-400">{playerState.duration > 30000 ? '🎵 Premium' : '⏱️ Preview'}</span>
               )}
             </div>
@@ -317,8 +336,13 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
               <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M8.445 14.832A1 1 0 0010 14v-2.798l5.445 3.63A1 1 0 0017 14V6a1 1 0 00-1.555-.832L10 8.798V6a1 1 0 00-1.555-.832l-6 4a1 1 0 000 1.664l6 4z" /></svg>
             </button>
 
-            {/* Play/Pause */}
-            <button onClick={togglePlay} className={`w-12 h-12 ${getPlatformColor()} rounded-full flex items-center justify-center hover:scale-110 transition-transform shadow-lg`}>
+            {/* Play/Pause — grayed out and disabled when the current track has an error */}
+            <button
+              onClick={error ? undefined : togglePlay}
+              disabled={!!error}
+              className={`w-12 h-12 rounded-full flex items-center justify-center transition-transform shadow-lg ${error ? 'bg-gray-600 cursor-not-allowed opacity-50' : `${getPlatformColor()} hover:scale-110`}`}
+              title={error ? 'Track unavailable' : undefined}
+            >
               <span className="text-2xl text-white">{playerState.isPlaying ? '⏸️' : '▶️'}</span>
             </button>
 

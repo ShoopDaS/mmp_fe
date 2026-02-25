@@ -28,6 +28,9 @@ export class SpotifyAdapter implements IPlayerAdapter {
   private trackEndCallback?: () => void;
   private errorCallback?: (error: Error) => void;
   private progressInterval?: NodeJS.Timeout;
+  private playAbortController: AbortController | null = null;
+  // Monotonically increasing counter — lets debounce detect stale calls
+  private playSequence = 0;
 
   async initialize(token: string): Promise<boolean> {
     this.token = token;
@@ -82,9 +85,15 @@ export class SpotifyAdapter implements IPlayerAdapter {
       if (!spotifyState) return;
 
       this.state.isPlaying = !spotifyState.paused;
-      this.state.currentTime = spotifyState.position;
-      this.state.duration = spotifyState.duration;
-      
+
+      // Guard against transition states where the SDK briefly reports duration=0
+      // (e.g. right after a failed play attempt or an adapter.pause() call).
+      // Writing duration=0 sets max=1 on the seek bar, making seeking impossible.
+      if (spotifyState.duration > 0) {
+        this.state.currentTime = spotifyState.position;
+        this.state.duration = spotifyState.duration;
+      }
+
       // Check if track ended
       if (spotifyState.position === 0 && spotifyState.paused && this.state.duration > 0) {
         this.handleTrackEnd();
@@ -157,10 +166,28 @@ export class SpotifyAdapter implements IPlayerAdapter {
   }
 
   async play(track: Track): Promise<void> {
-    console.log('🎵 [Spotify] Playing:', track.name);
+    console.log('🎵 [Spotify] Play requested:', track.name);
+
+    // Abort any in-flight fetch immediately so the previous request doesn't
+    // land on Spotify's server while we're already trying to play the next track.
+    this.playAbortController?.abort();
+    this.playAbortController = null;
 
     if (this.isPremium && this.deviceId) {
-      await this.playPremium(track);
+      // Debounce: stamp this call with a sequence number, wait 300 ms, then
+      // bail out if a newer call has already superseded us.  This prevents
+      // rapid song switches from firing multiple overlapping API requests that
+      // Spotify rejects with 403 while its player is still transitioning.
+      const seq = ++this.playSequence;
+      await new Promise<void>(resolve => setTimeout(resolve, 300));
+      if (seq !== this.playSequence) {
+        console.log('🚫 [Spotify] Debounced — superseded by newer play request');
+        return;
+      }
+
+      const controller = new AbortController();
+      this.playAbortController = controller;
+      await this.playPremium(track, controller.signal);
     } else if (track.preview_url) {
       this.playPreview(track);
     } else {
@@ -168,9 +195,8 @@ export class SpotifyAdapter implements IPlayerAdapter {
     }
   }
 
-  private async playPremium(track: Track): Promise<void> {
+  private async playPremium(track: Track, signal?: AbortSignal, attempt = 0): Promise<void> {
     try {
-      // 🚨 Corrected to the official Spotify API endpoint
       const res = await fetch(
         `https://api.spotify.com/v1/me/player/play?device_id=${this.deviceId}`,
         {
@@ -180,25 +206,68 @@ export class SpotifyAdapter implements IPlayerAdapter {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${this.token}`,
           },
+          signal,
         }
       );
 
       if (res.ok || res.status === 204) {
         console.log('✅ [Spotify] Playing Premium');
         this.startProgressTracking();
-      } else {
-        console.error('❌ [Spotify] Play failed:', res.status);
-        if (res.status === 403 || res.status === 404) {
+        return;
+      }
+
+      if (res.status === 403 || res.status === 404) {
+        // Parse error body to distinguish error classes.
+        // Spotify format: { error: { status, message, reason } }
+        let reason = 'UNKNOWN';
+        let message = '';
+        let rawBody = '';
+        try {
+          rawBody = await res.text();
+          const parsed = JSON.parse(rawBody);
+          reason  = parsed?.error?.reason  ?? 'UNKNOWN';
+          message = parsed?.error?.message ?? '';
+        } catch { /* ignore parse failures */ }
+
+        console.warn(`⚠️ [Spotify] ${res.status} reason="${reason}" message="${message}"`);
+
+        if (reason === 'PREMIUM_REQUIRED') {
+          console.warn('❌ [Spotify] Premium required — falling back to preview mode');
           this.isPremium = false;
           this.initPreviewMode();
           if (track.preview_url) {
-             this.playPreview(track);
+            this.playPreview(track);
           } else {
-             throw new Error("Premium account required for this track.");
+            throw new Error('Premium account required for this track.');
           }
+          return;
         }
+
+        // "Restriction violated" = track removed from Spotify or unavailable in
+        // this market.  This is permanent for the track — don't retry, don't
+        // touch isPremium.
+        if (message.includes('Restriction violated')) {
+          throw new Error('This track is not available on Spotify (removed or region-restricted).');
+        }
+
+        // Any other 403/404 is transient (device mid-transition, OAuth layer, etc.).
+        // Retry once after 500 ms before giving up. isPremium is NOT touched.
+        if (attempt === 0) {
+          console.warn('⚠️ [Spotify] Transient error — retrying in 500 ms...');
+          await new Promise<void>(resolve => setTimeout(resolve, 500));
+          if (signal?.aborted) return; // Song changed while we were waiting
+          return this.playPremium(track, signal, 1);
+        }
+
+        throw new Error(`Play failed: ${res.status} (${reason})`);
       }
+
+      throw new Error(`Play failed: ${res.status}`);
     } catch (e) {
+      if (e instanceof Error && e.name === 'AbortError') {
+        console.log('🚫 [Spotify] Play request cancelled (song changed)');
+        return;
+      }
       console.error('❌ [Spotify] Error:', e);
       this.notifyError(e as Error);
       throw e;
@@ -289,6 +358,12 @@ export class SpotifyAdapter implements IPlayerAdapter {
     console.log('🧹 [Spotify] Cleaning up...');
     this.stopProgressTracking();
 
+    this.playSequence++; // Invalidate any pending debounced play
+    if (this.playAbortController) {
+      this.playAbortController.abort();
+      this.playAbortController = null;
+    }
+
     if (this.player) {
       this.player.disconnect();
       this.player = null;
@@ -347,7 +422,9 @@ export class SpotifyAdapter implements IPlayerAdapter {
       if (this.isPremium && this.player) {
         try {
           const state = await this.player.getCurrentState();
-          if (state) {
+          // Same duration>0 guard as player_state_changed: SDK can return
+          // duration=0 during transitions and that would break the seek bar.
+          if (state && state.duration > 0) {
             this.state.currentTime = state.position;
             this.state.duration = state.duration;
             this.notifyStateChange();
