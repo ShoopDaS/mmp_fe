@@ -105,12 +105,18 @@ export default function TrackList({ tracks, onPlay, onTogglePlay, onAddToQueue, 
             <div
               key={track.id}
               className={`
-                flex items-center gap-4 p-4 rounded-lg transition-all cursor-pointer
+                flex items-center gap-4 p-4 rounded-lg transition-all cursor-pointer relative
                 ${getPlatformColors(track.platform, isCurrentTrack)}
+                ${openMenuId === track.id ? 'z-20' : 'z-0'}
                 backdrop-blur-sm
               `}
               onClick={() => handleTrackClick(track)}
             >
+              {/* Play/Pause indicator */}
+              <div className="text-2xl shrink-0">
+                {isCurrentTrack && isPlaying ? '⏸️' : '▶️'}
+              </div>
+
               {/* Album art */}
               {albumImage && (
                 <img
@@ -129,7 +135,7 @@ export default function TrackList({ tracks, onPlay, onTogglePlay, onAddToQueue, 
                 <p className="text-xs text-gray-400 truncate">{track.album.name}</p>
               </div>
 
-              {/* Track menu */}
+              {/* Track menu (kebab) */}
               <div className="relative shrink-0" ref={openMenuId === track.id ? menuRef : undefined}>
                 <button
                   onClick={(e) => {
@@ -158,14 +164,14 @@ export default function TrackList({ tracks, onPlay, onTogglePlay, onAddToQueue, 
                             <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                             </svg>
-                            <span className="text-green-400">Playing next!</span>
+                            <span className="text-green-400">Up next!</span>
                           </>
                         ) : (
                           <>
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
                             </svg>
-                            Play next
+                            Add next in queue
                           </>
                         )}
                       </button>
@@ -197,11 +203,6 @@ export default function TrackList({ tracks, onPlay, onTogglePlay, onAddToQueue, 
                     )}
                   </div>
                 )}
-              </div>
-
-              {/* Play/Pause indicator */}
-              <div className="text-2xl">
-                {isCurrentTrack && isPlaying ? '⏸️' : '▶️'}
               </div>
             </div>
           );
