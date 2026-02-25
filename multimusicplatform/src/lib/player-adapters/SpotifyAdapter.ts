@@ -85,9 +85,15 @@ export class SpotifyAdapter implements IPlayerAdapter {
       if (!spotifyState) return;
 
       this.state.isPlaying = !spotifyState.paused;
-      this.state.currentTime = spotifyState.position;
-      this.state.duration = spotifyState.duration;
-      
+
+      // Guard against transition states where the SDK briefly reports duration=0
+      // (e.g. right after a failed play attempt or an adapter.pause() call).
+      // Writing duration=0 sets max=1 on the seek bar, making seeking impossible.
+      if (spotifyState.duration > 0) {
+        this.state.currentTime = spotifyState.position;
+        this.state.duration = spotifyState.duration;
+      }
+
       // Check if track ended
       if (spotifyState.position === 0 && spotifyState.paused && this.state.duration > 0) {
         this.handleTrackEnd();
@@ -416,7 +422,9 @@ export class SpotifyAdapter implements IPlayerAdapter {
       if (this.isPremium && this.player) {
         try {
           const state = await this.player.getCurrentState();
-          if (state) {
+          // Same duration>0 guard as player_state_changed: SDK can return
+          // duration=0 during transitions and that would break the seek bar.
+          if (state && state.duration > 0) {
             this.state.currentTime = state.position;
             this.state.duration = state.duration;
             this.notifyStateChange();
