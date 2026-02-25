@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 
 interface Track {
   id: string;
@@ -19,17 +19,36 @@ interface Track {
 interface TrackListProps {
   tracks: Track[];
   onPlay: (track: Track) => void;
-  onTogglePlay?: () => void; // For pausing/resuming the current track
-  onAddToQueue?: (track: Track) => void; // Add a single track to the queue
-  onPlayNext?: (track: Track) => void; // Insert track right after the currently playing track
+  onTogglePlay?: () => void;
+  onAddToQueue?: (track: Track) => void;
+  onPlayNext?: (track: Track) => void;
   currentTrack: Track | null;
-  isPlaying?: boolean; // Whether the current track is playing
+  isPlaying?: boolean;
+  isCustomPlaylist?: boolean;
+  onRemoveFromPlaylist?: (track: Track) => void;
+  onReorderTracks?: (fromIndex: number, toIndex: number) => void;
 }
 
-export default function TrackList({ tracks, onPlay, onTogglePlay, onAddToQueue, onPlayNext, currentTrack, isPlaying = false }: TrackListProps) {
+export default function TrackList({
+  tracks,
+  onPlay,
+  onTogglePlay,
+  onAddToQueue,
+  onPlayNext,
+  currentTrack,
+  isPlaying = false,
+  isCustomPlaylist = false,
+  onRemoveFromPlaylist,
+  onReorderTracks,
+}: TrackListProps) {
   const [feedbackId, setFeedbackId] = useState<{ trackId: string; action: 'queued' | 'next' } | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Drag-and-drop state (custom playlists only)
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const dragNodeRef = useRef<HTMLDivElement | null>(null);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -64,10 +83,8 @@ export default function TrackList({ tracks, onPlay, onTogglePlay, onAddToQueue, 
     const isCurrentTrack = currentTrack?.id === track.id;
 
     if (isCurrentTrack && onTogglePlay) {
-      // If clicking the current track, toggle play/pause
       onTogglePlay();
     } else {
-      // Otherwise, play the new track
       onPlay(track);
     }
   };
@@ -93,25 +110,99 @@ export default function TrackList({ tracks, onPlay, onTogglePlay, onAddToQueue, 
     }
   };
 
+  // --- Drag-and-drop handlers for custom playlists ---
+  const handleDragStart = useCallback((e: React.DragEvent<HTMLDivElement>, index: number) => {
+    setDragIndex(index);
+    dragNodeRef.current = e.currentTarget;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(index));
+    requestAnimationFrame(() => {
+      if (dragNodeRef.current) {
+        dragNodeRef.current.style.opacity = '0.4';
+      }
+    });
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverIndex(index);
+  }, []);
+
+  const handleDragEnter = useCallback((e: React.DragEvent<HTMLDivElement>, index: number) => {
+    e.preventDefault();
+    setDragOverIndex(index);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    if (e.currentTarget === e.target) {
+      setDragOverIndex(null);
+    }
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>, toIndex: number) => {
+    e.preventDefault();
+    if (dragIndex !== null && dragIndex !== toIndex && onReorderTracks) {
+      onReorderTracks(dragIndex, toIndex);
+    }
+    setDragIndex(null);
+    setDragOverIndex(null);
+  }, [dragIndex, onReorderTracks]);
+
+  const handleDragEnd = useCallback(() => {
+    if (dragNodeRef.current) {
+      dragNodeRef.current.style.opacity = '1';
+    }
+    setDragIndex(null);
+    setDragOverIndex(null);
+    dragNodeRef.current = null;
+  }, []);
+
+  const canDrag = isCustomPlaylist && !!onReorderTracks;
+
   return (
     <div>
       <div className="space-y-2">
-        {tracks.map((track) => {
+        {tracks.map((track, index) => {
           const isCurrentTrack = currentTrack?.id === track.id;
           const albumImage = track.album.images[0]?.url || '';
           const feedback = feedbackId?.trackId === track.id ? feedbackId.action : null;
+          const isDragging = dragIndex === index;
+          const isDragOver = dragOverIndex === index && dragIndex !== index;
 
           return (
             <div
               key={track.id}
+              draggable={canDrag}
+              onDragStart={canDrag ? (e) => handleDragStart(e, index) : undefined}
+              onDragOver={canDrag ? (e) => handleDragOver(e, index) : undefined}
+              onDragEnter={canDrag ? (e) => handleDragEnter(e, index) : undefined}
+              onDragLeave={canDrag ? handleDragLeave : undefined}
+              onDrop={canDrag ? (e) => handleDrop(e, index) : undefined}
+              onDragEnd={canDrag ? handleDragEnd : undefined}
               className={`
-                flex items-center gap-4 p-4 rounded-lg transition-all cursor-pointer relative
+                flex items-center gap-4 p-4 rounded-lg transition-all cursor-pointer relative group
                 ${getPlatformColors(track.platform, isCurrentTrack)}
                 ${openMenuId === track.id ? 'z-20' : 'z-0'}
+                ${isDragging ? 'opacity-40' : ''}
+                ${isDragOver ? 'ring-2 ring-purple-500' : ''}
                 backdrop-blur-sm
               `}
               onClick={() => handleTrackClick(track)}
             >
+              {/* Drag handle for custom playlists */}
+              {canDrag && (
+                <span
+                  className="text-gray-600 group-hover:text-gray-400 cursor-grab active:cursor-grabbing shrink-0"
+                  title="Drag to reorder"
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M7 2a2 2 0 10.001 4.001A2 2 0 007 2zm0 6a2 2 0 10.001 4.001A2 2 0 007 8zm0 6a2 2 0 10.001 4.001A2 2 0 007 14zm6-8a2 2 0 10-.001-4.001A2 2 0 0013 6zm0 2a2 2 0 10.001 4.001A2 2 0 0013 8zm0 6a2 2 0 10.001 4.001A2 2 0 0013 14z" />
+                  </svg>
+                </span>
+              )}
+
               {/* Play/Pause indicator */}
               <div className="text-2xl shrink-0">
                 {isCurrentTrack && isPlaying ? '⏸️' : '▶️'}
@@ -204,6 +295,22 @@ export default function TrackList({ tracks, onPlay, onTogglePlay, onAddToQueue, 
                   </div>
                 )}
               </div>
+
+              {/* Remove from custom playlist button */}
+              {isCustomPlaylist && onRemoveFromPlaylist && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRemoveFromPlaylist(track);
+                  }}
+                  className="shrink-0 p-2 rounded-full bg-white/10 text-gray-400 opacity-0 group-hover:opacity-100 hover:bg-red-600/30 hover:text-red-400 transition-all"
+                  title="Remove from playlist"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+              )}
             </div>
           );
         })}

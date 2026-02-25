@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQueue } from '@/hooks/useQueue';
 import { apiClient } from '@/lib/api';
-import { UnifiedPlaylist } from '@/types/playlist';
+import { UnifiedPlaylist, CustomPlaylist, CustomTrackItem } from '@/types/playlist';
 import Header from '@/components/layout/Header';
 import SearchBar from '@/components/music/SearchBar';
 import TrackList from '@/components/music/TrackList';
@@ -96,6 +96,9 @@ export default function SearchPage() {
   const [activePlaylist, setActivePlaylist] = useState<UnifiedPlaylist | null>(null);
   const [playlistTracks, setPlaylistTracks] = useState<Track[]>([]);
   const [isLoadingPlaylistTracks, setIsLoadingPlaylistTracks] = useState(false);
+
+  // Custom (MMP) playlists — lifted state shared with sidebar + queue
+  const [customPlaylists, setCustomPlaylists] = useState<CustomPlaylist[]>([]);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -324,7 +327,9 @@ export default function SearchPage() {
   // ========== Playlist Track Loading ==========
 
   const loadPlaylistTracks = async (playlist: UnifiedPlaylist): Promise<Track[]> => {
-    if (playlist.platform === 'spotify') {
+    if (playlist.platform === 'mmp') {
+      return fetchCustomPlaylistTracks(playlist.id);
+    } else if (playlist.platform === 'spotify') {
       return fetchSpotifyPlaylistTracks(playlist.id, spotifyToken);
     } else if (playlist.platform === 'youtube') {
       return fetchYouTubePlaylistTracks(playlist.uri, youtubeToken);
@@ -393,6 +398,65 @@ export default function SearchPage() {
     queue.playNext(track);
   };
 
+  /** Reorder tracks within the active custom playlist (drag-and-drop) */
+  const handleReorderTracks = async (fromIndex: number, toIndex: number) => {
+    if (!activePlaylist || activePlaylist.platform !== 'mmp') return;
+
+    // Optimistic UI update
+    const updated = [...playlistTracks];
+    const [moved] = updated.splice(fromIndex, 1);
+    updated.splice(toIndex, 0, moved);
+    setPlaylistTracks(updated);
+
+    // Compute new order values (fractional, with 1000 gaps)
+    const reorders = updated.map((t, i) => ({
+      trackId: t.id,
+      order: (i + 1) * 1000,
+    }));
+
+    try {
+      await apiClient.reorderCustomPlaylistTracks(activePlaylist.id, reorders);
+    } catch (err) {
+      console.error('Failed to reorder tracks:', err);
+      // Revert on failure — reload from backend
+      const response = await apiClient.getCustomPlaylistTracks(activePlaylist.id);
+      if (response.data?.tracks) {
+        const reverted = response.data.tracks.map((item: CustomTrackItem) => ({
+          id: `${item.platform}-${item.trackId}`,
+          platform: item.platform,
+          name: item.name,
+          uri: item.uri,
+          artists: item.artists,
+          album: {
+            name: item.albumName,
+            images: item.albumImageUrl ? [{ url: item.albumImageUrl }] : [],
+          },
+          duration_ms: item.duration_ms,
+          preview_url: item.preview_url,
+        }));
+        setPlaylistTracks(reverted);
+      }
+    }
+  };
+
+  /** Remove a track from the active custom playlist */
+  const handleRemoveFromPlaylist = async (track: Track) => {
+    if (!activePlaylist || activePlaylist.platform !== 'mmp') return;
+
+    const response = await apiClient.removeTrackFromCustomPlaylist(activePlaylist.id, track.id);
+    if (!response.error) {
+      setPlaylistTracks((prev) => prev.filter((t) => t.id !== track.id));
+      // Update track count in custom playlists list
+      setCustomPlaylists((prev) =>
+        prev.map((p) =>
+          p.playlistId === activePlaylist.id
+            ? { ...p, trackCount: Math.max(0, p.trackCount - 1) }
+            : p
+        )
+      );
+    }
+  };
+
   /** Called when a track finishes playing — advance the queue */
   const handleTrackEnd = () => {
     queue.next();
@@ -431,6 +495,8 @@ export default function SearchPage() {
           activePlaylistId={activePlaylist?.id || null}
           onPlaylistSelect={handlePlaylistSelect}
           onPlaylistRefresh={handlePlaylistRefresh}
+          customPlaylists={customPlaylists}
+          onCustomPlaylistsChange={setCustomPlaylists}
         />
 
         {/* Main content */}
@@ -510,6 +576,9 @@ export default function SearchPage() {
                 onPlayNext={handlePlayNext}
                 currentTrack={currentTrack}
                 isPlaying={isPlaying}
+                isCustomPlaylist={activeTab === 'playlist' && activePlaylist?.platform === 'mmp'}
+                onRemoveFromPlaylist={handleRemoveFromPlaylist}
+                onReorderTracks={handleReorderTracks}
               />
             )}
 
@@ -543,10 +612,37 @@ export default function SearchPage() {
           }
           onTrackEnd={handleTrackEnd}
           onPlayerStateChange={handlePlayerStateChange}
+          customPlaylists={customPlaylists}
         />
       )}
     </div>
   );
+}
+
+// ========== Custom (MMP) Playlist Track Fetcher ==========
+
+async function fetchCustomPlaylistTracks(playlistId: string): Promise<Track[]> {
+  try {
+    const response = await apiClient.getCustomPlaylistTracks(playlistId);
+    if (response.error || !response.data?.tracks) return [];
+
+    return response.data.tracks.map((item: CustomTrackItem) => ({
+      id: `${item.platform}-${item.trackId}`,
+      platform: item.platform,
+      name: item.name,
+      uri: item.uri,
+      artists: item.artists,
+      album: {
+        name: item.albumName,
+        images: item.albumImageUrl ? [{ url: item.albumImageUrl }] : [],
+      },
+      duration_ms: item.duration_ms,
+      preview_url: item.preview_url,
+    }));
+  } catch (error) {
+    console.error('Custom playlist tracks error:', error);
+    return [];
+  }
 }
 
 // ========== Playlist Track Fetchers ==========
