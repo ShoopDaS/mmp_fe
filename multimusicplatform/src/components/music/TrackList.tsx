@@ -105,8 +105,9 @@ export default function TrackList({ tracks, onPlay, onTogglePlay, onAddToQueue, 
             <div
               key={track.id}
               className={`
-                flex items-center gap-4 p-4 rounded-lg transition-all cursor-pointer
+                flex items-center gap-4 p-4 rounded-lg transition-all cursor-pointer relative
                 ${getPlatformColors(track.platform, isCurrentTrack)}
+                ${openMenuId === track.id ? 'z-20' : 'z-0'}
                 backdrop-blur-sm
               `}
               onClick={() => handleTrackClick(track)}
@@ -144,7 +145,7 @@ export default function TrackList({ tracks, onPlay, onTogglePlay, onAddToQueue, 
                   </svg>
                 </button>
                 {openMenuId === track.id && (
-                  <div className="absolute right-0 bottom-full mb-1 w-44 bg-gray-800 border border-white/10 rounded-lg shadow-xl z-50 overflow-hidden">
+                  <div className="absolute right-0 top-full mt-1 w-44 bg-gray-800 border border-white/10 rounded-lg shadow-xl z-50 overflow-hidden">
                     {onPlayNext && (
                       <button
                         onClick={(e) => {
