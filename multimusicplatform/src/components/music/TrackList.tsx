@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { CustomPlaylist } from '@/types/playlist';
 
 interface Track {
   id: string;
@@ -16,6 +17,11 @@ interface Track {
   platform: 'spotify' | 'soundcloud' | 'youtube';
 }
 
+interface OwnedPlaylist {
+  id: string;
+  name: string;
+}
+
 interface TrackListProps {
   tracks: Track[];
   onPlay: (track: Track) => void;
@@ -27,6 +33,12 @@ interface TrackListProps {
   isCustomPlaylist?: boolean;
   onRemoveFromPlaylist?: (track: Track) => void;
   onReorderTracks?: (fromIndex: number, toIndex: number) => void;
+  // Add-to-playlist props
+  customPlaylists?: CustomPlaylist[];
+  ownedPlatformPlaylists?: Partial<Record<'spotify' | 'youtube' | 'soundcloud', OwnedPlaylist[] | 'loading'>>;
+  onAddToCustomPlaylist?: (track: Track, playlistId: string) => Promise<void>;
+  onAddToPlatformPlaylist?: (track: Track, playlistId: string) => Promise<void>;
+  onRequestPlatformPlaylists?: (platform: 'spotify' | 'youtube' | 'soundcloud') => void;
 }
 
 export default function TrackList({
@@ -40,9 +52,16 @@ export default function TrackList({
   isCustomPlaylist = false,
   onRemoveFromPlaylist,
   onReorderTracks,
+  customPlaylists,
+  ownedPlatformPlaylists,
+  onAddToCustomPlaylist,
+  onAddToPlatformPlaylist,
+  onRequestPlatformPlaylists,
 }: TrackListProps) {
   const [feedbackId, setFeedbackId] = useState<{ trackId: string; action: 'queued' | 'next' } | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [addToPlaylistOpenId, setAddToPlaylistOpenId] = useState<string | null>(null);
+  const [addFeedback, setAddFeedback] = useState<{ trackId: string; playlistId: string } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Drag-and-drop state (custom playlists only)
@@ -56,6 +75,7 @@ export default function TrackList({
     const handleClickOutside = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setOpenMenuId(null);
+        setAddToPlaylistOpenId(null);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -79,9 +99,16 @@ export default function TrackList({
     }
   };
 
+  const platformMeta = (platform: 'spotify' | 'youtube' | 'soundcloud') => {
+    switch (platform) {
+      case 'spotify': return { label: 'Spotify Playlists', icon: '🎵', iconColor: 'text-green-400' };
+      case 'youtube': return { label: 'YouTube Playlists', icon: '🎬', iconColor: 'text-red-400' };
+      case 'soundcloud': return { label: 'SoundCloud Playlists', icon: '🔊', iconColor: 'text-orange-400' };
+    }
+  };
+
   const handleTrackClick = (track: Track) => {
     const isCurrentTrack = currentTrack?.id === track.id;
-
     if (isCurrentTrack && onTogglePlay) {
       onTogglePlay();
     } else {
@@ -110,6 +137,24 @@ export default function TrackList({
     }
   };
 
+  const handleAddToPlaylist = (track: Track, playlistId: string, addFn: (track: Track, playlistId: string) => Promise<void>) => {
+    addFn(track, playlistId)
+      .then(() => {
+        setAddFeedback({ trackId: track.id, playlistId });
+        setTimeout(() => setAddFeedback(null), 1500);
+      })
+      .catch(err => console.error('Failed to add to playlist:', err));
+  };
+
+  const toggleAddToPlaylistPanel = (e: React.MouseEvent, track: Track) => {
+    e.stopPropagation();
+    const isOpen = addToPlaylistOpenId === track.id;
+    if (!isOpen && onRequestPlatformPlaylists && track.platform !== 'soundcloud') {
+      onRequestPlatformPlaylists(track.platform);
+    }
+    setAddToPlaylistOpenId(isOpen ? null : track.id);
+  };
+
   // --- Drag-and-drop handlers for custom playlists ---
   const handleDragStart = useCallback((e: React.DragEvent<HTMLDivElement>, index: number) => {
     setDragIndex(index);
@@ -117,9 +162,7 @@ export default function TrackList({
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', String(index));
     requestAnimationFrame(() => {
-      if (dragNodeRef.current) {
-        dragNodeRef.current.style.opacity = '0.4';
-      }
+      if (dragNodeRef.current) dragNodeRef.current.style.opacity = '0.4';
     });
   }, []);
 
@@ -135,9 +178,7 @@ export default function TrackList({
   }, []);
 
   const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    if (e.currentTarget === e.target) {
-      setDragOverIndex(null);
-    }
+    if (e.currentTarget === e.target) setDragOverIndex(null);
   }, []);
 
   const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>, toIndex: number) => {
@@ -150,15 +191,14 @@ export default function TrackList({
   }, [dragIndex, onReorderTracks]);
 
   const handleDragEnd = useCallback(() => {
-    if (dragNodeRef.current) {
-      dragNodeRef.current.style.opacity = '1';
-    }
+    if (dragNodeRef.current) dragNodeRef.current.style.opacity = '1';
     setDragIndex(null);
     setDragOverIndex(null);
     dragNodeRef.current = null;
   }, []);
 
   const canDrag = isCustomPlaylist && !!onReorderTracks;
+  const showAddToPlaylist = !!(onAddToCustomPlaylist || onAddToPlatformPlaylist);
 
   return (
     <div>
@@ -169,6 +209,9 @@ export default function TrackList({
           const feedback = feedbackId?.trackId === track.id ? feedbackId.action : null;
           const isDragging = dragIndex === index;
           const isDragOver = dragOverIndex === index && dragIndex !== index;
+          const isAddToPlaylistOpen = addToPlaylistOpenId === track.id;
+          const meta = platformMeta(track.platform);
+          const platformPlaylists = ownedPlatformPlaylists?.[track.platform];
 
           return (
             <div
@@ -190,7 +233,7 @@ export default function TrackList({
               `}
               onClick={() => handleTrackClick(track)}
             >
-              {/* Drag handle for custom playlists */}
+              {/* Drag handle */}
               {canDrag && (
                 <span
                   className="text-gray-600 group-hover:text-gray-400 cursor-grab active:cursor-grabbing shrink-0"
@@ -210,11 +253,7 @@ export default function TrackList({
 
               {/* Album art */}
               {albumImage && (
-                <img
-                  src={albumImage}
-                  alt={track.album.name}
-                  className="w-16 h-16 rounded"
-                />
+                <img src={albumImage} alt={track.album.name} className="w-16 h-16 rounded" />
               )}
 
               {/* Track info */}
@@ -231,7 +270,9 @@ export default function TrackList({
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    setOpenMenuId(openMenuId === track.id ? null : track.id);
+                    const closing = openMenuId === track.id;
+                    setOpenMenuId(closing ? null : track.id);
+                    if (closing) setAddToPlaylistOpenId(null);
                   }}
                   className="p-2 rounded-full bg-white/10 text-gray-300 hover:bg-white/20 hover:text-white transition-all"
                   title="More options"
@@ -240,26 +281,26 @@ export default function TrackList({
                     <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
                   </svg>
                 </button>
+
                 {openMenuId === track.id && (
-                  <div className="absolute right-0 top-full mt-1 w-44 bg-gray-800 border border-white/10 rounded-lg shadow-xl z-50 overflow-hidden">
+                  <div className={`absolute right-0 top-full mt-1 bg-gray-800 border border-white/10 rounded-lg shadow-xl z-50 overflow-hidden transition-all ${isAddToPlaylistOpen ? 'w-60' : 'w-48'}`}>
+
+                    {/* Queue actions */}
                     {onPlayNext && (
                       <button
-                        onClick={(e) => {
-                          handlePlayNext(e, track);
-                          setOpenMenuId(null);
-                        }}
+                        onClick={(e) => { handlePlayNext(e, track); setOpenMenuId(null); setAddToPlaylistOpenId(null); }}
                         className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors"
                       >
                         {feedback === 'next' ? (
                           <>
-                            <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-4 h-4 text-green-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                             </svg>
                             <span className="text-green-400">Up next!</span>
                           </>
                         ) : (
                           <>
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
                             </svg>
                             Add next in queue
@@ -269,28 +310,125 @@ export default function TrackList({
                     )}
                     {onAddToQueue && (
                       <button
-                        onClick={(e) => {
-                          handleAddToQueue(e, track);
-                          setOpenMenuId(null);
-                        }}
+                        onClick={(e) => { handleAddToQueue(e, track); setOpenMenuId(null); setAddToPlaylistOpenId(null); }}
                         className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors"
                       >
                         {feedback === 'queued' ? (
                           <>
-                            <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-4 h-4 text-green-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                             </svg>
                             <span className="text-green-400">Added!</span>
                           </>
                         ) : (
                           <>
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                             </svg>
                             Add to queue
                           </>
                         )}
                       </button>
+                    )}
+
+                    {/* ── Add to playlist ── */}
+                    {showAddToPlaylist && (
+                      <>
+                        <div className="border-t border-white/10 mt-1" />
+                        <button
+                          onClick={(e) => toggleAddToPlaylistPanel(e, track)}
+                          className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors"
+                        >
+                          <span className="flex items-center gap-2">
+                            <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+                            </svg>
+                            Add to playlist
+                          </span>
+                          <svg className="w-3 h-3 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d={isAddToPlaylistOpen
+                              ? "M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z"
+                              : "M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                            } clipRule="evenodd" />
+                          </svg>
+                        </button>
+
+                        {/* Playlist sub-panel */}
+                        {isAddToPlaylistOpen && (
+                          <div className="max-h-56 overflow-y-auto border-t border-white/10 bg-black/20">
+
+                            {/* MMP playlists */}
+                            {onAddToCustomPlaylist && (
+                              <>
+                                <p className="sticky top-0 bg-gray-850 bg-gray-900/90 px-3 py-1.5 text-[10px] text-gray-500 uppercase tracking-wider font-semibold">
+                                  My Playlists
+                                </p>
+                                {!customPlaylists || customPlaylists.length === 0 ? (
+                                  <p className="px-3 py-1.5 text-xs text-gray-500 italic">No playlists yet</p>
+                                ) : (
+                                  customPlaylists.map(pl => {
+                                    const justAdded = addFeedback?.trackId === track.id && addFeedback.playlistId === pl.playlistId;
+                                    return (
+                                      <button
+                                        key={pl.playlistId}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleAddToPlaylist(track, pl.playlistId, onAddToCustomPlaylist);
+                                        }}
+                                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-200 hover:bg-white/10 transition-colors"
+                                      >
+                                        <span className="text-purple-400 shrink-0">🎧</span>
+                                        <span className="truncate flex-1 text-left">{pl.name}</span>
+                                        {justAdded && (
+                                          <svg className="w-3.5 h-3.5 text-green-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                          </svg>
+                                        )}
+                                      </button>
+                                    );
+                                  })
+                                )}
+                              </>
+                            )}
+
+                            {/* Platform playlists (Spotify + YouTube only) */}
+                            {onAddToPlatformPlaylist && track.platform !== 'soundcloud' && (
+                              <>
+                                <p className="sticky top-0 bg-gray-900/90 px-3 py-1.5 text-[10px] text-gray-500 uppercase tracking-wider font-semibold border-t border-white/10">
+                                  {meta.label}
+                                </p>
+                                {!platformPlaylists || platformPlaylists === 'loading' ? (
+                                  <p className="px-3 py-1.5 text-xs text-gray-500 italic">Loading…</p>
+                                ) : platformPlaylists.length === 0 ? (
+                                  <p className="px-3 py-1.5 text-xs text-gray-500 italic">No playlists found</p>
+                                ) : (
+                                  platformPlaylists.map(pl => {
+                                    const justAdded = addFeedback?.trackId === track.id && addFeedback.playlistId === pl.id;
+                                    return (
+                                      <button
+                                        key={pl.id}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleAddToPlaylist(track, pl.id, onAddToPlatformPlaylist);
+                                        }}
+                                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-200 hover:bg-white/10 transition-colors"
+                                      >
+                                        <span className={`${meta.iconColor} shrink-0 text-xs`}>{meta.icon}</span>
+                                        <span className="truncate flex-1 text-left">{pl.name}</span>
+                                        {justAdded && (
+                                          <svg className="w-3.5 h-3.5 text-green-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                          </svg>
+                                        )}
+                                      </button>
+                                    );
+                                  })
+                                )}
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 )}
@@ -299,10 +437,7 @@ export default function TrackList({
               {/* Remove from custom playlist button */}
               {isCustomPlaylist && onRemoveFromPlaylist && (
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRemoveFromPlaylist(track);
-                  }}
+                  onClick={(e) => { e.stopPropagation(); onRemoveFromPlaylist(track); }}
                   className="shrink-0 p-2 rounded-full bg-white/10 text-gray-400 opacity-0 group-hover:opacity-100 hover:bg-red-600/30 hover:text-red-400 transition-all"
                   title="Remove from playlist"
                 >

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQueue } from '@/hooks/useQueue';
@@ -99,6 +99,12 @@ export default function SearchPage() {
 
   // Custom (MMP) playlists — lifted state shared with sidebar + queue
   const [customPlaylists, setCustomPlaylists] = useState<CustomPlaylist[]>([]);
+
+  // User-owned platform playlists for "Add to playlist" dropdown
+  // undefined = not yet fetched, 'loading' = fetching, array = done
+  type OwnedPlatformPlaylists = Partial<Record<'spotify' | 'youtube' | 'soundcloud', { id: string; name: string }[] | 'loading'>>;
+  const [ownedPlatformPlaylists, setOwnedPlatformPlaylists] = useState<OwnedPlatformPlaylists>({});
+  const fetchedPlatforms = useRef<Set<'spotify' | 'youtube' | 'soundcloud'>>(new Set());
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -457,6 +463,55 @@ export default function SearchPage() {
     }
   };
 
+  /** Lazy-load the user's owned playlists for a platform when first requested */
+  const handleRequestPlatformPlaylists = useCallback(async (platform: 'spotify' | 'youtube' | 'soundcloud') => {
+    if (platform === 'soundcloud') return; // SC add-to-playlist not supported via client API
+    if (fetchedPlatforms.current.has(platform)) return;
+    fetchedPlatforms.current.add(platform);
+
+    setOwnedPlatformPlaylists(prev => ({ ...prev, [platform]: 'loading' }));
+    try {
+      let playlists: { id: string; name: string }[] = [];
+      if (platform === 'spotify' && spotifyToken) {
+        playlists = await fetchSpotifyOwnedPlaylists(spotifyToken);
+      } else if (platform === 'youtube' && youtubeToken) {
+        playlists = await fetchYouTubeOwnedPlaylists(youtubeToken);
+      }
+      setOwnedPlatformPlaylists(prev => ({ ...prev, [platform]: playlists }));
+    } catch (err) {
+      console.error(`Failed to fetch ${platform} playlists:`, err);
+      setOwnedPlatformPlaylists(prev => ({ ...prev, [platform]: [] }));
+      fetchedPlatforms.current.delete(platform); // Allow retry
+    }
+  }, [spotifyToken, youtubeToken]);
+
+  /** Add a track to an MMP custom playlist from the TrackList kebab menu */
+  const handleAddToCustomPlaylist = useCallback(async (track: Track, playlistId: string) => {
+    await apiClient.addTrackToCustomPlaylist(playlistId, {
+      trackId: track.id,
+      platform: track.platform,
+      name: track.name,
+      uri: track.uri,
+      artists: track.artists,
+      albumName: track.album.name,
+      albumImageUrl: track.album.images[0]?.url || '',
+      duration_ms: track.duration_ms,
+      preview_url: track.preview_url || null,
+    });
+    setCustomPlaylists(prev =>
+      prev.map(p => p.playlistId === playlistId ? { ...p, trackCount: p.trackCount + 1 } : p)
+    );
+  }, []);
+
+  /** Add a track to a platform playlist (Spotify or YouTube) */
+  const handleAddToPlatformPlaylist = useCallback(async (track: Track, playlistId: string) => {
+    if (track.platform === 'spotify' && spotifyToken) {
+      await addTrackToSpotifyPlaylist(track.uri, playlistId, spotifyToken);
+    } else if (track.platform === 'youtube' && youtubeToken) {
+      await addTrackToYouTubePlaylist(track.uri, playlistId, youtubeToken);
+    }
+  }, [spotifyToken, youtubeToken]);
+
   /** Called when a track finishes playing — advance the queue */
   const handleTrackEnd = () => {
     queue.next();
@@ -579,6 +634,11 @@ export default function SearchPage() {
                 isCustomPlaylist={activeTab === 'playlist' && activePlaylist?.platform === 'mmp'}
                 onRemoveFromPlaylist={handleRemoveFromPlaylist}
                 onReorderTracks={handleReorderTracks}
+                customPlaylists={customPlaylists}
+                ownedPlatformPlaylists={ownedPlatformPlaylists}
+                onAddToCustomPlaylist={handleAddToCustomPlaylist}
+                onAddToPlatformPlaylist={handleAddToPlatformPlaylist}
+                onRequestPlatformPlaylists={handleRequestPlatformPlaylists}
               />
             )}
 
@@ -643,6 +703,67 @@ async function fetchCustomPlaylistTracks(playlistId: string): Promise<Track[]> {
     console.error('Custom playlist tracks error:', error);
     return [];
   }
+}
+
+// ========== Platform Playlist Helpers (owned playlists + add-track) ==========
+
+async function fetchSpotifyOwnedPlaylists(token: string): Promise<{ id: string; name: string }[]> {
+  // Fetch user's own ID to filter only playlists they created
+  const meRes = await fetch('https://api.spotify.com/v1/me', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!meRes.ok) return [];
+  const me = await meRes.json();
+
+  const res = await fetch('https://api.spotify.com/v1/me/playlists?limit=50', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return [];
+  const data = await res.json();
+
+  return (data.items || [])
+    .filter((item: any) => item.owner?.id === me.id)
+    .map((item: any) => ({ id: item.id, name: item.name }));
+}
+
+async function fetchYouTubeOwnedPlaylists(token: string): Promise<{ id: string; name: string }[]> {
+  const res = await fetch(
+    'https://www.googleapis.com/youtube/v3/playlists?part=snippet&mine=true&maxResults=50',
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (!res.ok) return [];
+  const data = await res.json();
+  return (data.items || []).map((item: any) => ({
+    id: item.id,
+    name: item.snippet.title,
+  }));
+}
+
+async function addTrackToSpotifyPlaylist(trackUri: string, playlistId: string, token: string): Promise<void> {
+  await fetch(`https://api.spotify.com/v1/playlists/${playlistId}/tracks`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ uris: [trackUri] }),
+  });
+}
+
+async function addTrackToYouTubePlaylist(videoId: string, playlistId: string, token: string): Promise<void> {
+  await fetch('https://www.googleapis.com/youtube/v3/playlistItems?part=snippet', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      snippet: {
+        playlistId,
+        resourceId: { kind: 'youtube#video', videoId },
+      },
+    }),
+  });
 }
 
 // ========== Playlist Track Fetchers ==========
