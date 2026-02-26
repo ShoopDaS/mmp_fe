@@ -428,7 +428,7 @@ export default function SearchPage() {
       const response = await apiClient.getCustomPlaylistTracks(activePlaylist.id);
       if (response.data?.tracks) {
         const reverted = response.data.tracks.map((item: CustomTrackItem) => ({
-          id: `${item.platform}-${item.trackId}`,
+          id: item.trackId,
           platform: item.platform,
           name: item.name,
           uri: item.uri,
@@ -687,7 +687,7 @@ async function fetchCustomPlaylistTracks(playlistId: string): Promise<Track[]> {
     if (response.error || !response.data?.tracks) return [];
 
     return response.data.tracks.map((item: CustomTrackItem) => ({
-      id: `${item.platform}-${item.trackId}`,
+      id: item.trackId,
       platform: item.platform,
       name: item.name,
       uri: item.uri,
