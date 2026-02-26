@@ -7,6 +7,7 @@ import { SoundCloudAdapter } from '@/lib/player-adapters/SoundCloudAdapter';
 import { YouTubeAdapter } from '@/lib/player-adapters/YouTubeAdapter';
 import { useQueue } from '@/hooks/useQueue';
 import { LoopMode } from '@/types/queue';
+import { CustomPlaylist } from '@/types/playlist';
 import QueueManager from '@/components/queue/QueueManager';
 
 interface UnifiedMusicPlayerProps {
@@ -14,6 +15,7 @@ interface UnifiedMusicPlayerProps {
   token: string;
   onTrackEnd?: () => void;
   onPlayerStateChange?: (isPlaying: boolean) => void;
+  customPlaylists?: CustomPlaylist[];
 }
 
 export interface UnifiedMusicPlayerRef {
@@ -24,7 +26,8 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
   track,
   token,
   onTrackEnd,
-  onPlayerStateChange
+  onPlayerStateChange,
+  customPlaylists = [],
 }, ref) => {
   const [playerState, setPlayerState] = useState<PlayerState>({
     isPlaying: false,
@@ -366,7 +369,7 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
 
             {/* Queue Manager */}
             <div className="relative">
-              <QueueManager />
+              <QueueManager customPlaylists={customPlaylists} />
             </div>
           </div>
         </div>

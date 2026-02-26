@@ -1,8 +1,11 @@
 'use client';
 
-import { useState } from 'react';
-import { UnifiedPlaylist } from '@/types/playlist';
+import { useState, useCallback } from 'react';
+import { UnifiedPlaylist, CustomPlaylist } from '@/types/playlist';
+import { apiClient } from '@/lib/api';
 import PlatformPlaylistSection from './PlatformPlaylistSection';
+import CustomPlaylistSection from './CustomPlaylistSection';
+import CreatePlaylistModal from './CreatePlaylistModal';
 
 interface PlaylistSidebarProps {
   spotifyToken: string | null;
@@ -11,6 +14,9 @@ interface PlaylistSidebarProps {
   activePlaylistId: string | null;
   onPlaylistSelect: (playlist: UnifiedPlaylist) => void;
   onPlaylistRefresh: (playlist: UnifiedPlaylist) => void;
+  /** Expose custom playlists so parent (search page / queue) can read them */
+  customPlaylists: CustomPlaylist[];
+  onCustomPlaylistsChange: (playlists: CustomPlaylist[]) => void;
 }
 
 export default function PlaylistSidebar({
@@ -20,8 +26,11 @@ export default function PlaylistSidebar({
   activePlaylistId,
   onPlaylistSelect,
   onPlaylistRefresh,
+  customPlaylists,
+  onCustomPlaylistsChange,
 }: PlaylistSidebarProps) {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   // Determine which platforms are connected (have tokens)
   const connectedPlatforms: Array<'spotify' | 'youtube' | 'soundcloud'> = [];
@@ -36,6 +45,16 @@ export default function PlaylistSidebar({
       case 'soundcloud': return soundcloudToken;
     }
   };
+
+  const handleCreatePlaylist = useCallback(async (name: string, description: string) => {
+    const response = await apiClient.createCustomPlaylist(name, description);
+    if (response.error) {
+      throw new Error(response.error);
+    }
+    if (response.data) {
+      onCustomPlaylistsChange([...customPlaylists, response.data]);
+    }
+  }, [customPlaylists, onCustomPlaylistsChange]);
 
   const sidebarContent = (
     <div className="flex flex-col h-full">
@@ -53,8 +72,21 @@ export default function PlaylistSidebar({
         </button>
       </div>
 
-      {/* Platform sections */}
+      {/* Playlist sections */}
       <div className="flex-1 overflow-y-auto">
+        {/* Custom (MMP) playlists — always on top */}
+        <CustomPlaylistSection
+          activePlaylistId={activePlaylistId}
+          onPlaylistSelect={(playlist) => {
+            onPlaylistSelect(playlist);
+            setIsMobileOpen(false);
+          }}
+          onCreateClick={() => setIsCreateModalOpen(true)}
+          playlists={customPlaylists}
+          onPlaylistsChange={onCustomPlaylistsChange}
+        />
+
+        {/* Platform sections */}
         {connectedPlatforms.length === 0 ? (
           <div className="px-4 py-8 text-center text-sm text-gray-500">
             No platforms connected.
@@ -114,6 +146,13 @@ export default function PlaylistSidebar({
       <aside className="hidden md:block w-72 flex-shrink-0 bg-black/20 backdrop-blur-sm border-r border-white/10 overflow-hidden">
         {sidebarContent}
       </aside>
+
+      {/* Create Playlist Modal */}
+      <CreatePlaylistModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onCreate={handleCreatePlaylist}
+      />
     </>
   );
 }

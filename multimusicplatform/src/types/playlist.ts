@@ -13,3 +13,37 @@ export interface PlaylistsResponse {
   source: 'cache' | 'api' | 'client';
   cachedAt: number | null;
 }
+
+// ========== Custom (MMP) Playlists ==========
+
+export interface CustomPlaylist {
+  playlistId: string;
+  name: string;
+  description: string;
+  imageUrl: string | null;
+  trackCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CustomTrackItem {
+  trackId: string;
+  platform: 'spotify' | 'youtube' | 'soundcloud';
+  name: string;
+  uri: string;
+  artists: { name: string }[];
+  albumName: string;
+  albumImageUrl: string;
+  duration_ms: number;
+  preview_url: string | null;
+  order: number;
+  addedAt: string;
+}
+
+export interface CustomPlaylistsResponse {
+  playlists: CustomPlaylist[];
+}
+
+export interface CustomPlaylistTracksResponse {
+  tracks: CustomTrackItem[];
+}
