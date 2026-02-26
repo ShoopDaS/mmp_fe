@@ -11,6 +11,7 @@ export class YouTubeAdapter implements IPlayerAdapter {
   private progressInterval: NodeJS.Timeout | null = null;
   private apiReady: boolean = false;
   private playerReady: boolean = false;
+  private volumeBeforeSuspend: number | null = null;
 
   private state: PlayerState = {
     isPlaying: false,
@@ -277,6 +278,26 @@ export class YouTubeAdapter implements IPlayerAdapter {
 
   getState(): PlayerState {
     return { ...this.state };
+  }
+
+  async suspend(): Promise<void> {
+    console.log('💤 [YouTube] Suspending...');
+    await this.pause();
+    // Silence the player directly (without touching state.volume) so
+    // audio can't leak if pause races with a buffering state change.
+    if (this.player && this.playerReady) {
+      this.volumeBeforeSuspend = this.state.volume;
+      this.player.setVolume(0);
+    }
+  }
+
+  async restore(): Promise<boolean> {
+    console.log('🔄 [YouTube] Restoring...');
+    if (this.volumeBeforeSuspend !== null && this.player && this.playerReady) {
+      this.player.setVolume(this.volumeBeforeSuspend * 100);
+      this.volumeBeforeSuspend = null;
+    }
+    return true;
   }
 
   cleanup(): void {

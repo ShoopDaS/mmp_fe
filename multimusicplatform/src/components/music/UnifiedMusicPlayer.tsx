@@ -93,12 +93,15 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
     const platform = track.platform;
     let isCancelled = false; // 🚨 FIX: Per-invocation cancellation flag
 
-    // Pause the previously active platform if we are switching
+    // Suspend the previously active platform if we are switching.
+    // suspend() pauses playback AND silences audio (so nothing leaks through),
+    // and for Spotify premium it also disconnects from Spotify Connect so the
+    // device is invisible to external Spotify clients while not in use.
     if (activePlatformRef.current && activePlatformRef.current !== platform) {
       const oldAdapter = adaptersMap.current[activePlatformRef.current];
       if (oldAdapter) {
-        console.log(`⏸️ Pausing background platform: ${activePlatformRef.current}`);
-        oldAdapter.pause().catch(() => {});
+        console.log(`💤 Suspending background platform: ${activePlatformRef.current}`);
+        (oldAdapter.suspend ? oldAdapter.suspend() : oldAdapter.pause()).catch(() => {});
       }
     }
 
@@ -106,10 +109,22 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
     setError('');
 
     const setupAdapter = async () => {
-      // 🚨 FAST PATH: If adapter is already cached, just reuse it!
+      // 🚨 FAST PATH: If adapter is already cached, restore it and reuse it.
+      // restore() reverses the effects of suspend() — for Spotify premium it
+      // reconnects to Spotify Connect; for YouTube/SoundCloud it un-mutes.
       if (adaptersMap.current[platform]) {
-        console.log(`♻️ Reusing cached adapter for: ${platform}`);
+        console.log(`♻️ Restoring cached adapter for: ${platform}`);
         const existingAdapter = adaptersMap.current[platform];
+
+        if (existingAdapter.restore) {
+          const ok = await existingAdapter.restore();
+          if (isCancelled) return; // 🚨 GUARD
+          if (!ok) {
+            setError(`Failed to reconnect ${platform} player`);
+            return;
+          }
+        }
+
         if (isCancelled) return; // 🚨 GUARD
         setPlayerState(existingAdapter.getState());
         setReadyPlatform(platform); // Trigger the play effect
@@ -201,7 +216,8 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
     return () => {
       console.log('🧹 Music Player unmounting, destroying all cached adapters...');
       Object.values(adaptersMap.current).forEach(adapter => {
-        adapter.pause().catch(() => {});
+        // suspend() silences and disconnects cleanly before cleanup()
+        (adapter.suspend ? adapter.suspend() : adapter.pause()).catch(() => {});
         adapter.cleanup();
       });
       adaptersMap.current = {};

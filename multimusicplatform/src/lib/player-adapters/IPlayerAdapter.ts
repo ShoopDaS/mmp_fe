@@ -85,6 +85,21 @@ export interface IPlayerAdapter {
   cleanup(): void;
 
   /**
+   * Suspend the player when it goes to the background (another platform becomes active).
+   * Should pause playback and silence audio so nothing leaks through.
+   * For Spotify premium: also disconnects from Spotify Connect so the device is
+   * invisible to external Spotify clients while not in use.
+   */
+  suspend?(): Promise<void>;
+
+  /**
+   * Restore the player when it comes back to the foreground.
+   * Reverses the effects of suspend() — reconnects to Spotify Connect, restores volume, etc.
+   * @returns Promise resolving to true if the player is ready to play again.
+   */
+  restore?(): Promise<boolean>;
+
+  /**
    * Register callback for state changes
    * @param callback - Function to call when state changes
    */

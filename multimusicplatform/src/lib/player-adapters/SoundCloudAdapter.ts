@@ -4,6 +4,7 @@ export class SoundCloudAdapter implements IPlayerAdapter {
   private widget: any = null;
   private token: string = '';
   private isDestroyed: boolean = false; // 🚨 THE KILL SWITCH
+  private volumeBeforeSuspend: number | null = null;
   
   private state: PlayerState = {
     isPlaying: false,
@@ -206,6 +207,26 @@ export class SoundCloudAdapter implements IPlayerAdapter {
 
   getState(): PlayerState {
     return { ...this.state };
+  }
+
+  async suspend(): Promise<void> {
+    console.log('💤 [SoundCloud] Suspending...');
+    await this.pause();
+    // Silence the widget directly (without touching state.volume) so audio
+    // can't bleed through if the widget is slow to honour the pause command.
+    if (this.widget && !this.isDestroyed) {
+      this.volumeBeforeSuspend = this.state.volume;
+      this.widget.setVolume(0);
+    }
+  }
+
+  async restore(): Promise<boolean> {
+    console.log('🔄 [SoundCloud] Restoring...');
+    if (this.volumeBeforeSuspend !== null && this.widget && !this.isDestroyed) {
+      this.widget.setVolume(this.volumeBeforeSuspend * 100);
+      this.volumeBeforeSuspend = null;
+    }
+    return true;
   }
 
   cleanup(): void {
