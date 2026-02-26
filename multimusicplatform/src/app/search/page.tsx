@@ -788,7 +788,7 @@ async function fetchSpotifyPlaylistTracks(playlistId: string, token: string | nu
       if (!track || !track.id) continue;
 
       allTracks.push({
-        id: `spotify-${track.id}-${allTracks.length}`,
+        id: `spotify-${track.id}`,
         platform: 'spotify',
         name: track.name,
         uri: track.uri,
@@ -839,7 +839,7 @@ async function fetchYouTubePlaylistTracks(playlistId: string, token: string | nu
       const imageUrl = thumbnails.high?.url || thumbnails.medium?.url || thumbnails.default?.url || '';
 
       allTracks.push({
-        id: `youtube-${videoId}-${allTracks.length}`,
+        id: `youtube-${videoId}`,
         platform: 'youtube',
         name: snippet.title || 'Unknown',
         uri: videoId,
@@ -888,7 +888,7 @@ async function fetchSoundCloudPlaylistTracks(playlistId: string, token: string |
       }
 
       tracks.push({
-        id: `soundcloud-${item.id}-${tracks.length}`,
+        id: `soundcloud-${item.id}`,
         platform: 'soundcloud',
         name: item.title || 'Unknown Track',
         uri: item.permalink_url || '',
