@@ -446,21 +446,21 @@ export default function SearchPage() {
   };
 
   /** Remove a track from the active custom playlist */
-  const handleRemoveFromPlaylist = async (track: Track) => {
+  const handleRemoveFromPlaylist = (track: Track) => {
     if (!activePlaylist || activePlaylist.platform !== 'mmp') return;
 
-    const response = await apiClient.removeTrackFromCustomPlaylist(activePlaylist.id, track.id);
-    if (!response.error) {
-      setPlaylistTracks((prev) => prev.filter((t) => t.id !== track.id));
-      // Update track count in custom playlists list
-      setCustomPlaylists((prev) =>
-        prev.map((p) =>
-          p.playlistId === activePlaylist.id
-            ? { ...p, trackCount: Math.max(0, p.trackCount - 1) }
-            : p
-        )
-      );
-    }
+    // Optimistic: update UI immediately (animation already played in TrackList)
+    setPlaylistTracks((prev) => prev.filter((t) => t.id !== track.id));
+    setCustomPlaylists((prev) =>
+      prev.map((p) =>
+        p.playlistId === activePlaylist.id
+          ? { ...p, trackCount: Math.max(0, p.trackCount - 1) }
+          : p
+      )
+    );
+
+    // Fire API in background
+    apiClient.removeTrackFromCustomPlaylist(activePlaylist.id, track.id);
   };
 
   /** Lazy-load the user's owned playlists for a platform when first requested */

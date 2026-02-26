@@ -49,7 +49,17 @@ class ApiClient {
         },
       });
 
-      const data = await response.json();
+      // 204 No Content (common for DELETE) has no body — skip JSON parsing
+      if (response.status === 204) {
+        return { statusCode: 204 };
+      }
+
+      let data: any;
+      try {
+        data = await response.json();
+      } catch {
+        return response.ok ? { statusCode: response.status } : { error: 'Request failed', statusCode: response.status };
+      }
 
       if (!response.ok) {
         return {

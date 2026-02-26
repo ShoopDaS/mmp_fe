@@ -62,6 +62,7 @@ export default function TrackList({
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [addToPlaylistOpenId, setAddToPlaylistOpenId] = useState<string | null>(null);
   const [addFeedback, setAddFeedback] = useState<{ trackId: string; playlistId: string } | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Drag-and-drop state (custom playlists only)
@@ -155,6 +156,16 @@ export default function TrackList({
     setAddToPlaylistOpenId(isOpen ? null : track.id);
   };
 
+  const handleRemoveClick = (e: React.MouseEvent, track: Track) => {
+    e.stopPropagation();
+    if (removingId || !onRemoveFromPlaylist) return;
+    setRemovingId(track.id);
+    setTimeout(() => {
+      onRemoveFromPlaylist(track);
+      setRemovingId(null);
+    }, 300);
+  };
+
   // --- Drag-and-drop handlers for custom playlists ---
   const handleDragStart = useCallback((e: React.DragEvent<HTMLDivElement>, index: number) => {
     setDragIndex(index);
@@ -224,10 +235,11 @@ export default function TrackList({
               onDrop={canDrag ? (e) => handleDrop(e, index) : undefined}
               onDragEnd={canDrag ? handleDragEnd : undefined}
               className={`
-                flex items-center gap-4 p-4 rounded-lg transition-all cursor-pointer relative group
+                flex items-center gap-4 p-4 rounded-lg transition-all duration-300 cursor-pointer relative group
                 ${getPlatformColors(track.platform, isCurrentTrack)}
                 ${openMenuId === track.id ? 'z-20' : 'z-0'}
-                ${isDragging ? 'opacity-40' : ''}
+                ${removingId === track.id ? 'opacity-0 translate-x-8 scale-95 pointer-events-none' : ''}
+                ${isDragging && removingId !== track.id ? 'opacity-40' : ''}
                 ${isDragOver ? 'ring-2 ring-purple-500' : ''}
                 backdrop-blur-sm
               `}
@@ -437,7 +449,7 @@ export default function TrackList({
               {/* Remove from custom playlist button */}
               {isCustomPlaylist && onRemoveFromPlaylist && (
                 <button
-                  onClick={(e) => { e.stopPropagation(); onRemoveFromPlaylist(track); }}
+                  onClick={(e) => handleRemoveClick(e, track)}
                   className="shrink-0 p-2 rounded-full bg-white/10 text-gray-400 opacity-0 group-hover:opacity-100 hover:bg-red-600/30 hover:text-red-400 transition-all"
                   title="Remove from playlist"
                 >
