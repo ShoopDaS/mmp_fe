@@ -31,6 +31,8 @@ export class SpotifyAdapter implements IPlayerAdapter {
   private playAbortController: AbortController | null = null;
   // Monotonically increasing counter — lets debounce detect stale calls
   private playSequence = 0;
+  // Pending restore() resolver — set by suspend/restore cycle for premium players
+  private onRestoreResolve: ((success: boolean) => void) | null = null;
 
   async initialize(token: string): Promise<boolean> {
     this.token = token;
@@ -74,6 +76,11 @@ export class SpotifyAdapter implements IPlayerAdapter {
       this.isPremium = true;
       this.state.canPlay = true;
       this.notifyStateChange();
+      // Resolve any restore() call that was waiting for reconnection
+      if (this.onRestoreResolve) {
+        this.onRestoreResolve(true);
+        this.onRestoreResolve = null;
+      }
     });
 
     player.addListener('not_ready', () => {
@@ -354,6 +361,71 @@ export class SpotifyAdapter implements IPlayerAdapter {
     return { ...this.state };
   }
 
+  async suspend(): Promise<void> {
+    console.log('💤 [Spotify] Suspending...');
+    await this.pause();
+
+    // Silence the preview audio element so it can't leak if pause is slow
+    if (this.audioElement) {
+      this.audioElement.volume = 0;
+    }
+
+    // Disconnect from Spotify Connect so the MMP device disappears from other
+    // Spotify clients. This prevents an external app from pushing playback
+    // to this device while it's not the active platform in MMP.
+    if (this.isPremium && this.player && this.deviceId) {
+      this.deviceId = '';
+      this.state.canPlay = false;
+      this.notifyStateChange();
+      try {
+        await this.player.disconnect();
+        console.log('🔌 [Spotify] Disconnected from Spotify Connect');
+      } catch (e) {
+        console.warn('[Spotify] Disconnect failed (non-fatal):', e);
+      }
+    }
+  }
+
+  async restore(): Promise<boolean> {
+    console.log('🔄 [Spotify] Restoring...');
+
+    // Restore preview audio element volume
+    if (this.audioElement) {
+      this.audioElement.volume = this.state.volume;
+    }
+
+    // Reconnect to Spotify Connect if we disconnected during suspend()
+    if (this.isPremium && this.player && !this.deviceId) {
+      return new Promise<boolean>((resolve) => {
+        const timeout = setTimeout(() => {
+          // Timed out waiting for ready — resolve false so the caller can show an error
+          if (this.onRestoreResolve === resolve) this.onRestoreResolve = null;
+          console.warn('[Spotify] Reconnect timed out');
+          resolve(false);
+        }, 8000);
+
+        this.onRestoreResolve = (success) => {
+          clearTimeout(timeout);
+          resolve(success);
+        };
+
+        this.player.connect().then((connected: boolean) => {
+          if (!connected) {
+            clearTimeout(timeout);
+            if (this.onRestoreResolve) { this.onRestoreResolve(false); this.onRestoreResolve = null; }
+          }
+          // If connected, wait for the 'ready' event to fire (handled above)
+        }).catch(() => {
+          clearTimeout(timeout);
+          if (this.onRestoreResolve) { this.onRestoreResolve(false); this.onRestoreResolve = null; }
+        });
+      });
+    }
+
+    // Free-tier or already connected — nothing to reconnect
+    return true;
+  }
+
   cleanup(): void {
     console.log('🧹 [Spotify] Cleaning up...');
     this.stopProgressTracking();
@@ -362,6 +434,12 @@ export class SpotifyAdapter implements IPlayerAdapter {
     if (this.playAbortController) {
       this.playAbortController.abort();
       this.playAbortController = null;
+    }
+
+    // Cancel any in-flight restore() promise
+    if (this.onRestoreResolve) {
+      this.onRestoreResolve(false);
+      this.onRestoreResolve = null;
     }
 
     if (this.player) {
