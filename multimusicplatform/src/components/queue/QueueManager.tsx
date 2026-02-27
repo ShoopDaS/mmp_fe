@@ -2,8 +2,15 @@
 
 import { useState, useRef, useCallback } from 'react';
 import { useQueue } from '@/hooks/useQueue';
+import { CustomPlaylist } from '@/types/playlist';
+import { apiClient } from '@/lib/api';
+import { Track } from '@/lib/player-adapters/IPlayerAdapter';
 
-export default function QueueManager() {
+interface QueueManagerProps {
+  customPlaylists: CustomPlaylist[];
+}
+
+export default function QueueManager({ customPlaylists }: QueueManagerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const {
     tracks,
@@ -21,6 +28,11 @@ export default function QueueManager() {
   const [dragVisualIndex, setDragVisualIndex] = useState<number | null>(null);
   const [dragOverVisualIndex, setDragOverVisualIndex] = useState<number | null>(null);
   const dragNodeRef = useRef<HTMLDivElement | null>(null);
+
+  // Add-to-playlist dropdown state
+  const [addToPlaylistTrackIndex, setAddToPlaylistTrackIndex] = useState<number | null>(null);
+  const [addFeedback, setAddFeedback] = useState<{ trackIndex: number; playlistId: string } | null>(null);
+  const addMenuRef = useRef<HTMLDivElement>(null);
 
   const currentTrack = currentIndex >= 0 && currentIndex < tracks.length ? tracks[currentIndex] : null;
   const upcomingTracks = currentIndex >= 0 ? tracks.slice(currentIndex + 1) : [];
@@ -42,13 +54,34 @@ export default function QueueManager() {
     }
   };
 
+  // --- Add to playlist handler ---
+  const handleAddToPlaylist = async (track: Track, playlistId: string, trackIndex: number) => {
+    try {
+      await apiClient.addTrackToCustomPlaylist(playlistId, {
+        trackId: track.id,
+        platform: track.platform,
+        name: track.name,
+        uri: track.uri,
+        artists: track.artists,
+        albumName: track.album.name,
+        albumImageUrl: track.album.images[0]?.url || '',
+        duration_ms: track.duration_ms,
+        preview_url: track.preview_url || null,
+      });
+      setAddFeedback({ trackIndex, playlistId });
+      setTimeout(() => setAddFeedback(null), 1500);
+    } catch (err) {
+      console.error('Failed to add track to playlist:', err);
+    }
+    setAddToPlaylistTrackIndex(null);
+  };
+
   // --- Drag-and-drop handlers ---
   const handleDragStart = useCallback((e: React.DragEvent<HTMLDivElement>, visualIndex: number) => {
     setDragVisualIndex(visualIndex);
     dragNodeRef.current = e.currentTarget;
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', String(visualIndex));
-    // Make the drag image slightly transparent
     requestAnimationFrame(() => {
       if (dragNodeRef.current) {
         dragNodeRef.current.style.opacity = '0.4';
@@ -68,7 +101,6 @@ export default function QueueManager() {
   }, []);
 
   const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    // Only clear if leaving the actual element (not entering a child)
     if (e.currentTarget === e.target) {
       setDragOverVisualIndex(null);
     }
@@ -185,6 +217,8 @@ export default function QueueManager() {
                   const queueIndex = currentIndex + 1 + i;
                   const isDragging = dragVisualIndex === i;
                   const isDragOver = dragOverVisualIndex === i;
+                  const showAddDropdown = addToPlaylistTrackIndex === i;
+                  const justAdded = addFeedback?.trackIndex === i;
 
                   return (
                     <div
@@ -197,7 +231,7 @@ export default function QueueManager() {
                       onDrop={(e) => handleDrop(e, i)}
                       onDragEnd={handleDragEnd}
                       className={`
-                        flex items-center gap-2 px-3 py-2 group cursor-pointer select-none transition-colors
+                        flex items-center gap-2 px-3 py-2 group cursor-pointer select-none transition-colors relative
                         ${isDragging ? 'opacity-40' : 'hover:bg-white/5'}
                         ${isDragOver && !isDragging ? 'border-t-2 border-purple-500' : 'border-t-2 border-transparent'}
                       `}
@@ -223,6 +257,63 @@ export default function QueueManager() {
                         <p className="text-gray-400 text-[11px] truncate">{track.artists.map(a => a.name).join(', ')}</p>
                       </div>
                       <span className={`w-2 h-2 rounded-full shrink-0 ${getPlatformColor(track.platform)}`} />
+
+                      {/* Add to playlist button */}
+                      <div className="relative" ref={showAddDropdown ? addMenuRef : undefined}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setAddToPlaylistTrackIndex(showAddDropdown ? null : i);
+                          }}
+                          className={`
+                            p-1 rounded transition-opacity
+                            ${justAdded
+                              ? 'text-green-400 opacity-100'
+                              : 'opacity-0 group-hover:opacity-100 text-gray-400 hover:text-purple-400'
+                            }
+                          `}
+                          title="Add to playlist"
+                        >
+                          {justAdded ? (
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          ) : (
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                            </svg>
+                          )}
+                        </button>
+
+                        {/* Playlist sub-dropdown */}
+                        {showAddDropdown && (
+                          <div className="absolute right-0 bottom-full mb-1 w-48 bg-gray-800 border border-white/10 rounded-lg shadow-xl z-50 overflow-hidden">
+                            <p className="px-3 py-1.5 text-[10px] text-gray-500 uppercase tracking-wider font-semibold border-b border-white/10">
+                              Add to playlist
+                            </p>
+                            {customPlaylists.length === 0 ? (
+                              <p className="px-3 py-2 text-xs text-gray-500">No playlists yet</p>
+                            ) : (
+                              customPlaylists.map((pl) => (
+                                <button
+                                  key={pl.playlistId}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleAddToPlaylist(track, pl.playlistId, i);
+                                  }}
+                                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-200 hover:bg-white/10 transition-colors"
+                                >
+                                  <span className="text-purple-400 text-xs">🎧</span>
+                                  <span className="truncate">{pl.name}</span>
+                                  <span className="text-gray-500 text-xs ml-auto">{pl.trackCount}</span>
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Remove button */}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
