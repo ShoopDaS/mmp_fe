@@ -6,6 +6,11 @@ import { apiClient } from '@/lib/api';
 import PlatformPlaylistSection from './PlatformPlaylistSection';
 import CustomPlaylistSection from './CustomPlaylistSection';
 import CreatePlaylistModal from './CreatePlaylistModal';
+import {
+  fetchSpotifyPlaylistTracks,
+  fetchYouTubePlaylistTracks,
+  fetchSoundCloudPlaylistTracks,
+} from '@/lib/platformHelpers';
 
 interface PlaylistSidebarProps {
   spotifyToken: string | null;
@@ -17,6 +22,10 @@ interface PlaylistSidebarProps {
   /** Expose custom playlists so parent (search page / queue) can read them */
   customPlaylists: CustomPlaylist[];
   onCustomPlaylistsChange: (playlists: CustomPlaylist[]) => void;
+  /** Maps custom playlistId -> Set of trackIds (for import deduplication) */
+  playlistTrackIds: Record<string, Set<string>>;
+  /** Called after an import completes */
+  onImportComplete: (playlistId: string, importedTrackIds: string[]) => void;
 }
 
 export default function PlaylistSidebar({
@@ -28,6 +37,8 @@ export default function PlaylistSidebar({
   onPlaylistRefresh,
   customPlaylists,
   onCustomPlaylistsChange,
+  playlistTrackIds,
+  onImportComplete,
 }: PlaylistSidebarProps) {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -55,6 +66,52 @@ export default function PlaylistSidebar({
       onCustomPlaylistsChange([...customPlaylists, response.data]);
     }
   }, [customPlaylists, onCustomPlaylistsChange]);
+
+  /**
+   * Called when the user picks a source (platform) playlist and a target (custom) playlist.
+   * Fetches tracks, skips duplicates, adds each track, then notifies the parent.
+   */
+  const handleImportToPlaylist = useCallback(async (
+    sourcePlaylist: UnifiedPlaylist,
+    targetPlaylistId: string
+  ) => {
+    // Fetch all tracks from the source platform playlist
+    let tracks: Awaited<ReturnType<typeof fetchSpotifyPlaylistTracks>> = [];
+    if (sourcePlaylist.platform === 'spotify') {
+      tracks = await fetchSpotifyPlaylistTracks(sourcePlaylist.id, spotifyToken);
+    } else if (sourcePlaylist.platform === 'youtube') {
+      tracks = await fetchYouTubePlaylistTracks(sourcePlaylist.uri, youtubeToken);
+    } else if (sourcePlaylist.platform === 'soundcloud') {
+      tracks = await fetchSoundCloudPlaylistTracks(sourcePlaylist.id, soundcloudToken);
+    }
+
+    // Skip tracks already in the target playlist
+    const existingIds = playlistTrackIds[targetPlaylistId] || new Set<string>();
+    const toAdd = tracks.filter(t => !existingIds.has(t.id));
+
+    // Add each track sequentially
+    const importedIds: string[] = [];
+    for (const track of toAdd) {
+      try {
+        await apiClient.addTrackToCustomPlaylist(targetPlaylistId, {
+          trackId: track.id,
+          platform: track.platform,
+          name: track.name,
+          uri: track.uri,
+          artists: track.artists,
+          albumName: track.album.name,
+          albumImageUrl: track.album.images[0]?.url || '',
+          duration_ms: track.duration_ms,
+          preview_url: track.preview_url || null,
+        });
+        importedIds.push(track.id);
+      } catch {
+        // Skip failed tracks silently
+      }
+    }
+
+    onImportComplete(targetPlaylistId, importedIds);
+  }, [spotifyToken, youtubeToken, soundcloudToken, playlistTrackIds, onImportComplete]);
 
   const sidebarContent = (
     <div className="flex flex-col h-full">
@@ -102,9 +159,11 @@ export default function PlaylistSidebar({
               activePlaylistId={activePlaylistId}
               onPlaylistSelect={(playlist) => {
                 onPlaylistSelect(playlist);
-                setIsMobileOpen(false); // Close drawer on mobile after selection
+                setIsMobileOpen(false);
               }}
               onPlaylistRefresh={onPlaylistRefresh}
+              customPlaylists={customPlaylists}
+              onImportToPlaylist={handleImportToPlaylist}
             />
           ))
         )}

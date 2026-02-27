@@ -39,6 +39,10 @@ interface TrackListProps {
   onAddToCustomPlaylist?: (track: Track, playlistId: string) => Promise<void>;
   onAddToPlatformPlaylist?: (track: Track, playlistId: string) => Promise<void>;
   onRequestPlatformPlaylists?: (platform: 'spotify' | 'youtube' | 'soundcloud') => void;
+  /** Maps custom playlistId -> Set of trackIds already in that playlist (for checkmarks + uniqueness) */
+  playlistTrackIds?: Record<string, Set<string>>;
+  /** Called when the "Add to playlist" panel opens to lazy-load track ID sets */
+  onRequestPlaylistTrackIds?: (playlistIds: string[]) => void;
 }
 
 export default function TrackList({
@@ -57,6 +61,8 @@ export default function TrackList({
   onAddToCustomPlaylist,
   onAddToPlatformPlaylist,
   onRequestPlatformPlaylists,
+  playlistTrackIds,
+  onRequestPlaylistTrackIds,
 }: TrackListProps) {
   const [feedbackId, setFeedbackId] = useState<{ trackId: string; action: 'queued' | 'next' } | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -150,8 +156,17 @@ export default function TrackList({
   const toggleAddToPlaylistPanel = (e: React.MouseEvent, track: Track) => {
     e.stopPropagation();
     const isOpen = addToPlaylistOpenId === track.id;
-    if (!isOpen && onRequestPlatformPlaylists && track.platform !== 'soundcloud') {
-      onRequestPlatformPlaylists(track.platform);
+    if (!isOpen) {
+      if (onRequestPlatformPlaylists && track.platform !== 'soundcloud') {
+        onRequestPlatformPlaylists(track.platform);
+      }
+      // Lazy-load trackId sets for any custom playlists not yet loaded
+      if (onRequestPlaylistTrackIds && customPlaylists?.length) {
+        const unloaded = customPlaylists
+          .map(pl => pl.playlistId)
+          .filter(id => !playlistTrackIds?.[id]);
+        if (unloaded.length) onRequestPlaylistTrackIds(unloaded);
+      }
     }
     setAddToPlaylistOpenId(isOpen ? null : track.id);
   };
@@ -380,18 +395,24 @@ export default function TrackList({
                                 ) : (
                                   customPlaylists.map(pl => {
                                     const justAdded = addFeedback?.trackId === track.id && addFeedback.playlistId === pl.playlistId;
+                                    const alreadyIn = playlistTrackIds?.[pl.playlistId]?.has(track.id) ?? false;
                                     return (
                                       <button
                                         key={pl.playlistId}
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          handleAddToPlaylist(track, pl.playlistId, onAddToCustomPlaylist);
+                                          if (!alreadyIn) handleAddToPlaylist(track, pl.playlistId, onAddToCustomPlaylist!);
                                         }}
-                                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-200 hover:bg-white/10 transition-colors"
+                                        disabled={alreadyIn}
+                                        className={`w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors ${
+                                          alreadyIn
+                                            ? 'text-gray-500 cursor-not-allowed pointer-events-none'
+                                            : 'text-gray-200 hover:bg-white/10 cursor-pointer'
+                                        }`}
                                       >
                                         <span className="text-purple-400 shrink-0">🎧</span>
                                         <span className="truncate flex-1 text-left">{pl.name}</span>
-                                        {justAdded && (
+                                        {(alreadyIn || justAdded) && (
                                           <svg className="w-3.5 h-3.5 text-green-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                           </svg>
