@@ -12,6 +12,15 @@ import TrackList from '@/components/music/TrackList';
 import UnifiedMusicPlayer, { UnifiedMusicPlayerRef } from '@/components/music/UnifiedMusicPlayer';
 import { PlatformState } from '@/components/music/PlatformSelector';
 import PlaylistSidebar from '@/components/playlists/PlaylistSidebar';
+import {
+  fetchSpotifyOwnedPlaylists,
+  fetchYouTubeOwnedPlaylists,
+  addTrackToSpotifyPlaylist,
+  addTrackToYouTubePlaylist,
+  fetchSpotifyPlaylistTracks,
+  fetchYouTubePlaylistTracks,
+  fetchSoundCloudPlaylistTracks,
+} from '@/lib/platformHelpers';
 
 interface Track {
   id: string;
@@ -99,6 +108,10 @@ export default function SearchPage() {
 
   // Custom (MMP) playlists — lifted state shared with sidebar + queue
   const [customPlaylists, setCustomPlaylists] = useState<CustomPlaylist[]>([]);
+
+  // Maps custom playlistId -> Set of trackIds in that playlist (for uniqueness + checkmarks)
+  const [playlistTrackIds, setPlaylistTrackIds] = useState<Record<string, Set<string>>>({});
+  const [duplicateToast, setDuplicateToast] = useState<string | null>(null);
 
   // User-owned platform playlists for "Add to playlist" dropdown
   // undefined = not yet fetched, 'loading' = fetching, array = done
@@ -332,6 +345,38 @@ export default function SearchPage() {
 
   // ========== Playlist Track Loading ==========
 
+  const fetchCustomPlaylistTracks = useCallback(async (playlistId: string): Promise<Track[]> => {
+    try {
+      const response = await apiClient.getCustomPlaylistTracks(playlistId);
+      if (response.error || !response.data?.tracks) return [];
+
+      const tracks = response.data.tracks.map((item: CustomTrackItem) => ({
+        id: item.trackId,
+        platform: item.platform,
+        name: item.name,
+        uri: item.uri,
+        artists: item.artists,
+        album: {
+          name: item.albumName,
+          images: item.albumImageUrl ? [{ url: item.albumImageUrl }] : [],
+        },
+        duration_ms: item.duration_ms,
+        preview_url: item.preview_url,
+      }));
+
+      // Populate uniqueness set for this playlist
+      setPlaylistTrackIds(prev => ({
+        ...prev,
+        [playlistId]: new Set(response.data!.tracks.map((t: CustomTrackItem) => t.trackId)),
+      }));
+
+      return tracks;
+    } catch (error) {
+      console.error('Custom playlist tracks error:', error);
+      return [];
+    }
+  }, []);
+
   const loadPlaylistTracks = async (playlist: UnifiedPlaylist): Promise<Track[]> => {
     if (playlist.platform === 'mmp') {
       return fetchCustomPlaylistTracks(playlist.id);
@@ -487,6 +532,13 @@ export default function SearchPage() {
 
   /** Add a track to an MMP custom playlist from the TrackList kebab menu */
   const handleAddToCustomPlaylist = useCallback(async (track: Track, playlistId: string) => {
+    // Enforce uniqueness: block duplicate trackIds
+    if (playlistTrackIds[playlistId]?.has(track.id)) {
+      setDuplicateToast(`"${track.name}" is already in this playlist`);
+      setTimeout(() => setDuplicateToast(null), 3000);
+      return;
+    }
+
     await apiClient.addTrackToCustomPlaylist(playlistId, {
       trackId: track.id,
       platform: track.platform,
@@ -501,7 +553,13 @@ export default function SearchPage() {
     setCustomPlaylists(prev =>
       prev.map(p => p.playlistId === playlistId ? { ...p, trackCount: p.trackCount + 1 } : p)
     );
-  }, []);
+    // Update uniqueness set
+    setPlaylistTrackIds(prev => {
+      const s = new Set(prev[playlistId] || []);
+      s.add(track.id);
+      return { ...prev, [playlistId]: s };
+    });
+  }, [playlistTrackIds]);
 
   /** Add a track to a platform playlist (Spotify or YouTube) */
   const handleAddToPlatformPlaylist = useCallback(async (track: Track, playlistId: string) => {
@@ -511,6 +569,43 @@ export default function SearchPage() {
       await addTrackToYouTubePlaylist(track.uri, playlistId, youtubeToken);
     }
   }, [spotifyToken, youtubeToken]);
+
+  /** Lazy-load trackId sets for custom playlists not yet in playlistTrackIds */
+  const handleRequestPlaylistTrackIds = useCallback(async (playlistIds: string[]) => {
+    const unloaded = playlistIds.filter(id => !playlistTrackIds[id]);
+    if (!unloaded.length) return;
+    await Promise.all(
+      unloaded.map(async (id) => {
+        try {
+          const res = await apiClient.getCustomPlaylistTracks(id);
+          if (res.data?.tracks) {
+            setPlaylistTrackIds(prev => ({
+              ...prev,
+              [id]: new Set(res.data!.tracks.map((t: CustomTrackItem) => t.trackId)),
+            }));
+          }
+        } catch {
+          // Silently fail — dropdown still shows without checkmarks
+        }
+      })
+    );
+  }, [playlistTrackIds]);
+
+  /** Called by ImportPlaylistModal after import completes */
+  const handleImportComplete = useCallback((playlistId: string, importedTrackIds: string[]) => {
+    setPlaylistTrackIds(prev => {
+      const s = new Set(prev[playlistId] || []);
+      importedTrackIds.forEach(id => s.add(id));
+      return { ...prev, [playlistId]: s };
+    });
+    setCustomPlaylists(prev =>
+      prev.map(p =>
+        p.playlistId === playlistId
+          ? { ...p, trackCount: p.trackCount + importedTrackIds.length }
+          : p
+      )
+    );
+  }, []);
 
   /** Called when a track finishes playing — advance the queue */
   const handleTrackEnd = () => {
@@ -552,6 +647,8 @@ export default function SearchPage() {
           onPlaylistRefresh={handlePlaylistRefresh}
           customPlaylists={customPlaylists}
           onCustomPlaylistsChange={setCustomPlaylists}
+          playlistTrackIds={playlistTrackIds}
+          onImportComplete={handleImportComplete}
         />
 
         {/* Main content */}
@@ -639,6 +736,8 @@ export default function SearchPage() {
                 onAddToCustomPlaylist={handleAddToCustomPlaylist}
                 onAddToPlatformPlaylist={handleAddToPlatformPlaylist}
                 onRequestPlatformPlaylists={handleRequestPlatformPlaylists}
+                playlistTrackIds={playlistTrackIds}
+                onRequestPlaylistTrackIds={handleRequestPlaylistTrackIds}
               />
             )}
 
@@ -675,236 +774,16 @@ export default function SearchPage() {
           customPlaylists={customPlaylists}
         />
       )}
+
+      {/* Duplicate track toast */}
+      {duplicateToast && (
+        <div className="fixed bottom-24 right-6 z-50 bg-gray-800 border border-white/20 text-white text-sm px-4 py-3 rounded-lg shadow-xl">
+          {duplicateToast}
+        </div>
+      )}
     </div>
   );
 }
 
-// ========== Custom (MMP) Playlist Track Fetcher ==========
-
-async function fetchCustomPlaylistTracks(playlistId: string): Promise<Track[]> {
-  try {
-    const response = await apiClient.getCustomPlaylistTracks(playlistId);
-    if (response.error || !response.data?.tracks) return [];
-
-    return response.data.tracks.map((item: CustomTrackItem) => ({
-      id: item.trackId,
-      platform: item.platform,
-      name: item.name,
-      uri: item.uri,
-      artists: item.artists,
-      album: {
-        name: item.albumName,
-        images: item.albumImageUrl ? [{ url: item.albumImageUrl }] : [],
-      },
-      duration_ms: item.duration_ms,
-      preview_url: item.preview_url,
-    }));
-  } catch (error) {
-    console.error('Custom playlist tracks error:', error);
-    return [];
-  }
-}
-
-// ========== Platform Playlist Helpers (owned playlists + add-track) ==========
-
-async function fetchSpotifyOwnedPlaylists(token: string): Promise<{ id: string; name: string }[]> {
-  // Fetch user's own ID to filter only playlists they created
-  const meRes = await fetch('https://api.spotify.com/v1/me', {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!meRes.ok) return [];
-  const me = await meRes.json();
-
-  const res = await fetch('https://api.spotify.com/v1/me/playlists?limit=50', {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) return [];
-  const data = await res.json();
-
-  return (data.items || [])
-    .filter((item: any) => item.owner?.id === me.id)
-    .map((item: any) => ({ id: item.id, name: item.name }));
-}
-
-async function fetchYouTubeOwnedPlaylists(token: string): Promise<{ id: string; name: string }[]> {
-  const res = await fetch(
-    'https://www.googleapis.com/youtube/v3/playlists?part=snippet&mine=true&maxResults=50',
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-  if (!res.ok) return [];
-  const data = await res.json();
-  return (data.items || []).map((item: any) => ({
-    id: item.id,
-    name: item.snippet.title,
-  }));
-}
-
-async function addTrackToSpotifyPlaylist(trackUri: string, playlistId: string, token: string): Promise<void> {
-  await fetch(`https://api.spotify.com/v1/playlists/${playlistId}/tracks`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ uris: [trackUri] }),
-  });
-}
-
-async function addTrackToYouTubePlaylist(videoId: string, playlistId: string, token: string): Promise<void> {
-  await fetch('https://www.googleapis.com/youtube/v3/playlistItems?part=snippet', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      snippet: {
-        playlistId,
-        resourceId: { kind: 'youtube#video', videoId },
-      },
-    }),
-  });
-}
-
-// ========== Playlist Track Fetchers ==========
-
-async function fetchSpotifyPlaylistTracks(playlistId: string, token: string | null): Promise<Track[]> {
-  if (!token) return [];
-
-  const allTracks: Track[] = [];
-  let url: string | null = `https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=100`;
-
-  while (url) {
-    const response: Response = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-
-    if (!response.ok) break;
-
-    const data: any = await response.json();
-
-    for (const item of data.items || []) {
-      const track = item.track;
-      if (!track || !track.id) continue;
-
-      allTracks.push({
-        id: `spotify-${track.id}`,
-        platform: 'spotify',
-        name: track.name,
-        uri: track.uri,
-        artists: track.artists,
-        album: track.album,
-        duration_ms: track.duration_ms,
-        preview_url: track.preview_url,
-      });
-    }
-
-    url = data.next || null;
-  }
-
-  return allTracks;
-}
-
-async function fetchYouTubePlaylistTracks(playlistId: string, token: string | null): Promise<Track[]> {
-  if (!token) return [];
-
-  const allTracks: Track[] = [];
-  let pageToken: string | null = null;
-
-  while (true) {
-    const params = new URLSearchParams({
-      part: 'snippet,contentDetails',
-      playlistId: playlistId,
-      maxResults: '50',
-    });
-    if (pageToken) params.set('pageToken', pageToken);
-
-    const response: Response = await fetch(
-      `https://www.googleapis.com/youtube/v3/playlistItems?${params}`,
-      {
-        headers: { Authorization: `Bearer ${token}` },
-      }
-    );
-
-    if (!response.ok) break;
-
-    const data: any = await response.json();
-
-    for (const item of data.items || []) {
-      const videoId = item.contentDetails?.videoId;
-      if (!videoId) continue;
-
-      const snippet = item.snippet || {};
-      const thumbnails = snippet.thumbnails || {};
-      const imageUrl = thumbnails.high?.url || thumbnails.medium?.url || thumbnails.default?.url || '';
-
-      allTracks.push({
-        id: `youtube-${videoId}`,
-        platform: 'youtube',
-        name: snippet.title || 'Unknown',
-        uri: videoId,
-        artists: [{ name: snippet.videoOwnerChannelTitle || snippet.channelTitle || '' }],
-        album: {
-          name: snippet.videoOwnerChannelTitle || snippet.channelTitle || '',
-          images: imageUrl ? [{ url: imageUrl }] : [],
-        },
-        duration_ms: 0,
-        preview_url: null,
-      });
-    }
-
-    pageToken = data.nextPageToken || null;
-    if (!pageToken) break;
-  }
-
-  return allTracks;
-}
-
-async function fetchSoundCloudPlaylistTracks(playlistId: string, token: string | null): Promise<Track[]> {
-  if (!token) return [];
-
-  try {
-    const response: Response = await fetch(
-      `https://api.soundcloud.com/playlists/${playlistId}?representation=compact`,
-      {
-        headers: {
-          Authorization: `OAuth ${token}`,
-          Accept: 'application/json; charset=utf-8',
-        },
-      }
-    );
-
-    if (!response.ok) return [];
-
-    const data: any = await response.json();
-    const tracks: Track[] = [];
-
-    for (const item of data.tracks || []) {
-      if (!item || !item.id) continue;
-
-      let artworkUrl = item.artwork_url || '';
-      if (artworkUrl) {
-        artworkUrl = artworkUrl.replace('-large', '-t500x500');
-      }
-
-      tracks.push({
-        id: `soundcloud-${item.id}`,
-        platform: 'soundcloud',
-        name: item.title || 'Unknown Track',
-        uri: item.permalink_url || '',
-        artists: [{ name: item.user?.username || 'Unknown Artist' }],
-        album: {
-          name: item.user?.username || 'Unknown Artist',
-          images: artworkUrl ? [{ url: artworkUrl }] : [],
-        },
-        duration_ms: item.duration || 0,
-        preview_url: item.stream_url || null,
-      });
-    }
-
-    return tracks;
-  } catch (error) {
-    console.error('SoundCloud playlist tracks error:', error);
-    return [];
-  }
-}
+// fetchCustomPlaylistTracks is now a useCallback inside the component above.
+// All platform helper functions are now in @/lib/platformHelpers.

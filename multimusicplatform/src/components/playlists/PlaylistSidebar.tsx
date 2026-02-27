@@ -6,6 +6,7 @@ import { apiClient } from '@/lib/api';
 import PlatformPlaylistSection from './PlatformPlaylistSection';
 import CustomPlaylistSection from './CustomPlaylistSection';
 import CreatePlaylistModal from './CreatePlaylistModal';
+import ImportPlaylistModal from './ImportPlaylistModal';
 
 interface PlaylistSidebarProps {
   spotifyToken: string | null;
@@ -17,6 +18,10 @@ interface PlaylistSidebarProps {
   /** Expose custom playlists so parent (search page / queue) can read them */
   customPlaylists: CustomPlaylist[];
   onCustomPlaylistsChange: (playlists: CustomPlaylist[]) => void;
+  /** Maps custom playlistId -> Set of trackIds (for import deduplication) */
+  playlistTrackIds: Record<string, Set<string>>;
+  /** Called after an import completes */
+  onImportComplete: (playlistId: string, importedTrackIds: string[]) => void;
 }
 
 export default function PlaylistSidebar({
@@ -28,9 +33,12 @@ export default function PlaylistSidebar({
   onPlaylistRefresh,
   customPlaylists,
   onCustomPlaylistsChange,
+  playlistTrackIds,
+  onImportComplete,
 }: PlaylistSidebarProps) {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   // Determine which platforms are connected (have tokens)
   const connectedPlatforms: Array<'spotify' | 'youtube' | 'soundcloud'> = [];
@@ -82,6 +90,7 @@ export default function PlaylistSidebar({
             setIsMobileOpen(false);
           }}
           onCreateClick={() => setIsCreateModalOpen(true)}
+          onImportClick={() => setIsImportModalOpen(true)}
           playlists={customPlaylists}
           onPlaylistsChange={onCustomPlaylistsChange}
         />
@@ -152,6 +161,21 @@ export default function PlaylistSidebar({
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         onCreate={handleCreatePlaylist}
+      />
+
+      {/* Import Playlist Modal */}
+      <ImportPlaylistModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        customPlaylists={customPlaylists}
+        spotifyToken={spotifyToken}
+        youtubeToken={youtubeToken}
+        soundcloudToken={soundcloudToken}
+        playlistTrackIds={playlistTrackIds}
+        onImportComplete={(playlistId, importedTrackIds) => {
+          onImportComplete(playlistId, importedTrackIds);
+          setIsImportModalOpen(false);
+        }}
       />
     </>
   );
