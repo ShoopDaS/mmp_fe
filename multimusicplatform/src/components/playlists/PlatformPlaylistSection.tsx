@@ -169,6 +169,17 @@ export default function PlatformPlaylistSection({
 
 // ========== Spotify Client-Side Fetch ==========
 
+const SPOTIFY_SYSTEM_PLAYLIST_NAMES = new Set([
+  'Discover Weekly',
+  'Release Radar',
+  'Daily Mix 1',
+  'Daily Mix 2',
+  'Daily Mix 3',
+  'Daily Mix 4',
+  'Daily Mix 5',
+  'Daily Mix 6',
+]);
+
 async function fetchSpotifyPlaylists(token: string): Promise<UnifiedPlaylist[]> {
   const allPlaylists: UnifiedPlaylist[] = [];
   let url: string | null = 'https://api.spotify.com/v1/me/playlists?limit=50';
@@ -185,6 +196,9 @@ async function fetchSpotifyPlaylists(token: string): Promise<UnifiedPlaylist[]> 
     const data: any = await response.json();
 
     for (const item of data.items || []) {
+      if (item.owner?.id === 'spotify' && SPOTIFY_SYSTEM_PLAYLIST_NAMES.has(item.name)) {
+        continue;
+      }
       allPlaylists.push({
         id: item.id,
         platform: 'spotify',
