@@ -6,7 +6,11 @@ import { apiClient } from '@/lib/api';
 import PlatformPlaylistSection from './PlatformPlaylistSection';
 import CustomPlaylistSection from './CustomPlaylistSection';
 import CreatePlaylistModal from './CreatePlaylistModal';
-import ImportPlaylistModal from './ImportPlaylistModal';
+import {
+  fetchSpotifyPlaylistTracks,
+  fetchYouTubePlaylistTracks,
+  fetchSoundCloudPlaylistTracks,
+} from '@/lib/platformHelpers';
 
 interface PlaylistSidebarProps {
   spotifyToken: string | null;
@@ -38,7 +42,6 @@ export default function PlaylistSidebar({
 }: PlaylistSidebarProps) {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   // Determine which platforms are connected (have tokens)
   const connectedPlatforms: Array<'spotify' | 'youtube' | 'soundcloud'> = [];
@@ -63,6 +66,52 @@ export default function PlaylistSidebar({
       onCustomPlaylistsChange([...customPlaylists, response.data]);
     }
   }, [customPlaylists, onCustomPlaylistsChange]);
+
+  /**
+   * Called when the user picks a source (platform) playlist and a target (custom) playlist.
+   * Fetches tracks, skips duplicates, adds each track, then notifies the parent.
+   */
+  const handleImportToPlaylist = useCallback(async (
+    sourcePlaylist: UnifiedPlaylist,
+    targetPlaylistId: string
+  ) => {
+    // Fetch all tracks from the source platform playlist
+    let tracks: Awaited<ReturnType<typeof fetchSpotifyPlaylistTracks>> = [];
+    if (sourcePlaylist.platform === 'spotify') {
+      tracks = await fetchSpotifyPlaylistTracks(sourcePlaylist.id, spotifyToken);
+    } else if (sourcePlaylist.platform === 'youtube') {
+      tracks = await fetchYouTubePlaylistTracks(sourcePlaylist.uri, youtubeToken);
+    } else if (sourcePlaylist.platform === 'soundcloud') {
+      tracks = await fetchSoundCloudPlaylistTracks(sourcePlaylist.id, soundcloudToken);
+    }
+
+    // Skip tracks already in the target playlist
+    const existingIds = playlistTrackIds[targetPlaylistId] || new Set<string>();
+    const toAdd = tracks.filter(t => !existingIds.has(t.id));
+
+    // Add each track sequentially
+    const importedIds: string[] = [];
+    for (const track of toAdd) {
+      try {
+        await apiClient.addTrackToCustomPlaylist(targetPlaylistId, {
+          trackId: track.id,
+          platform: track.platform,
+          name: track.name,
+          uri: track.uri,
+          artists: track.artists,
+          albumName: track.album.name,
+          albumImageUrl: track.album.images[0]?.url || '',
+          duration_ms: track.duration_ms,
+          preview_url: track.preview_url || null,
+        });
+        importedIds.push(track.id);
+      } catch {
+        // Skip failed tracks silently
+      }
+    }
+
+    onImportComplete(targetPlaylistId, importedIds);
+  }, [spotifyToken, youtubeToken, soundcloudToken, playlistTrackIds, onImportComplete]);
 
   const sidebarContent = (
     <div className="flex flex-col h-full">
@@ -90,7 +139,6 @@ export default function PlaylistSidebar({
             setIsMobileOpen(false);
           }}
           onCreateClick={() => setIsCreateModalOpen(true)}
-          onImportClick={() => setIsImportModalOpen(true)}
           playlists={customPlaylists}
           onPlaylistsChange={onCustomPlaylistsChange}
         />
@@ -111,9 +159,11 @@ export default function PlaylistSidebar({
               activePlaylistId={activePlaylistId}
               onPlaylistSelect={(playlist) => {
                 onPlaylistSelect(playlist);
-                setIsMobileOpen(false); // Close drawer on mobile after selection
+                setIsMobileOpen(false);
               }}
               onPlaylistRefresh={onPlaylistRefresh}
+              customPlaylists={customPlaylists}
+              onImportToPlaylist={handleImportToPlaylist}
             />
           ))
         )}
@@ -161,21 +211,6 @@ export default function PlaylistSidebar({
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         onCreate={handleCreatePlaylist}
-      />
-
-      {/* Import Playlist Modal */}
-      <ImportPlaylistModal
-        isOpen={isImportModalOpen}
-        onClose={() => setIsImportModalOpen(false)}
-        customPlaylists={customPlaylists}
-        spotifyToken={spotifyToken}
-        youtubeToken={youtubeToken}
-        soundcloudToken={soundcloudToken}
-        playlistTrackIds={playlistTrackIds}
-        onImportComplete={(playlistId, importedTrackIds) => {
-          onImportComplete(playlistId, importedTrackIds);
-          setIsImportModalOpen(false);
-        }}
       />
     </>
   );

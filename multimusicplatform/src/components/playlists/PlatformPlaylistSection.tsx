@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { apiClient } from '@/lib/api';
-import { UnifiedPlaylist } from '@/types/playlist';
+import { UnifiedPlaylist, CustomPlaylist } from '@/types/playlist';
 import PlaylistItem from './PlaylistItem';
 
 interface PlatformPlaylistSectionProps {
@@ -11,6 +11,8 @@ interface PlatformPlaylistSectionProps {
   activePlaylistId: string | null;
   onPlaylistSelect: (playlist: UnifiedPlaylist) => void;
   onPlaylistRefresh: (playlist: UnifiedPlaylist) => void;
+  customPlaylists?: CustomPlaylist[];
+  onImportToPlaylist?: (sourcePlaylist: UnifiedPlaylist, targetPlaylistId: string) => Promise<void>;
 }
 
 const platformConfig = {
@@ -25,6 +27,8 @@ export default function PlatformPlaylistSection({
   activePlaylistId,
   onPlaylistSelect,
   onPlaylistRefresh,
+  customPlaylists,
+  onImportToPlaylist,
 }: PlatformPlaylistSectionProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [playlists, setPlaylists] = useState<UnifiedPlaylist[]>([]);
@@ -153,6 +157,8 @@ export default function PlatformPlaylistSection({
               isActive={activePlaylistId === playlist.id}
               onClick={onPlaylistSelect}
               onRefresh={handlePlaylistRefresh}
+              customPlaylists={customPlaylists}
+              onImportToPlaylist={onImportToPlaylist}
             />
           ))}
         </div>

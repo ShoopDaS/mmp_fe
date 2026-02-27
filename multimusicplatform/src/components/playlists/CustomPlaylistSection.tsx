@@ -11,8 +11,6 @@ interface CustomPlaylistSectionProps {
   /** Externally-managed playlist list so parent can update after create */
   playlists: CustomPlaylist[];
   onPlaylistsChange: (playlists: CustomPlaylist[]) => void;
-  /** Opens the import-playlist modal */
-  onImportClick?: () => void;
 }
 
 export default function CustomPlaylistSection({
@@ -21,7 +19,6 @@ export default function CustomPlaylistSection({
   onCreateClick,
   playlists,
   onPlaylistsChange,
-  onImportClick,
 }: CustomPlaylistSectionProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
@@ -101,17 +98,6 @@ export default function CustomPlaylistSection({
             <span className="text-xs text-gray-500">({playlists.length})</span>
           )}
         </button>
-
-        {/* Import button */}
-        {onImportClick && (
-          <button
-            onClick={onImportClick}
-            className="text-gray-400 hover:text-white text-sm px-1 transition-colors"
-            title="Import platform playlist"
-          >
-            ⬇
-          </button>
-        )}
 
         {/* Create button */}
         <button
