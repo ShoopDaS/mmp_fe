@@ -62,10 +62,12 @@ export default function PlaylistSidebar({
     if (response.error) {
       throw new Error(response.error);
     }
-    if (response.data) {
-      onCustomPlaylistsChange([...customPlaylists, response.data]);
+    // Re-fetch the full list so we always get server-authoritative, correctly-shaped data
+    const listResponse = await apiClient.getCustomPlaylists();
+    if (!listResponse.error && listResponse.data?.playlists) {
+      onCustomPlaylistsChange(listResponse.data.playlists);
     }
-  }, [customPlaylists, onCustomPlaylistsChange]);
+  }, [onCustomPlaylistsChange]);
 
   /**
    * Called when the user picks a source (platform) playlist and a target (custom) playlist.
