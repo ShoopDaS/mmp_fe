@@ -20,6 +20,8 @@ import {
   fetchSpotifyPlaylistTracks,
   fetchYouTubePlaylistTracks,
   fetchSoundCloudPlaylistTracks,
+  fetchSpotifyPlaylistTrackUris,
+  fetchYouTubePlaylistVideoIds,
 } from '@/lib/platformHelpers';
 import PlaylistEditSidebar from '@/components/playlists/PlaylistEditSidebar';
 import PlaylistCover from '@/components/music/PlaylistCover';
@@ -123,6 +125,10 @@ export default function SearchPage() {
   type OwnedPlatformPlaylists = Partial<Record<'spotify' | 'youtube' | 'soundcloud', { id: string; name: string }[] | 'loading'>>;
   const [ownedPlatformPlaylists, setOwnedPlatformPlaylists] = useState<OwnedPlatformPlaylists>({});
   const fetchedPlatforms = useRef<Set<'spotify' | 'youtube' | 'soundcloud'>>(new Set());
+
+  // Maps platform playlist ID -> Set of track URIs/video IDs already in that playlist
+  const [platformPlaylistTrackIds, setPlatformPlaylistTrackIds] = useState<Record<string, Set<string>>>({});
+  const fetchedPlatformPlaylistTrackIds = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -531,6 +537,33 @@ export default function SearchPage() {
     setIsEditSidebarOpen(false);
   };
 
+  /** Lazy-load track IDs for platform playlists (for duplicate detection + checkmarks) */
+  const handleRequestPlatformPlaylistTrackIds = useCallback(async (
+    platform: 'spotify' | 'youtube',
+    playlistIds: string[],
+  ) => {
+    const unloaded = playlistIds.filter(id => !fetchedPlatformPlaylistTrackIds.current.has(id));
+    if (!unloaded.length) return;
+
+    await Promise.all(
+      unloaded.map(async (id) => {
+        fetchedPlatformPlaylistTrackIds.current.add(id);
+        try {
+          let trackIds: Set<string>;
+          if (platform === 'spotify' && spotifyToken) {
+            trackIds = await fetchSpotifyPlaylistTrackUris(id, spotifyToken);
+          } else if (platform === 'youtube' && youtubeToken) {
+            trackIds = await fetchYouTubePlaylistVideoIds(id, youtubeToken);
+          } else return;
+
+          setPlatformPlaylistTrackIds(prev => ({ ...prev, [id]: trackIds }));
+        } catch {
+          fetchedPlatformPlaylistTrackIds.current.delete(id); // Allow retry
+        }
+      })
+    );
+  }, [spotifyToken, youtubeToken]);
+
   /** Lazy-load the user's owned playlists for a platform when first requested */
   const handleRequestPlatformPlaylists = useCallback(async (platform: 'spotify' | 'youtube' | 'soundcloud') => {
     if (platform === 'soundcloud') return; // SC add-to-playlist not supported via client API
@@ -546,12 +579,17 @@ export default function SearchPage() {
         playlists = await fetchYouTubeOwnedPlaylists(youtubeToken);
       }
       setOwnedPlatformPlaylists(prev => ({ ...prev, [platform]: playlists }));
+
+      // Chain: also start fetching track IDs for these playlists
+      if (playlists.length && (platform === 'spotify' || platform === 'youtube')) {
+        handleRequestPlatformPlaylistTrackIds(platform, playlists.map(pl => pl.id));
+      }
     } catch (err) {
       console.error(`Failed to fetch ${platform} playlists:`, err);
       setOwnedPlatformPlaylists(prev => ({ ...prev, [platform]: [] }));
       fetchedPlatforms.current.delete(platform); // Allow retry
     }
-  }, [spotifyToken, youtubeToken]);
+  }, [spotifyToken, youtubeToken, handleRequestPlatformPlaylistTrackIds]);
 
   /** Add a track to an MMP custom playlist from the TrackList kebab menu */
   const handleAddToCustomPlaylist = useCallback(async (track: Track, playlistId: string) => {
@@ -586,12 +624,26 @@ export default function SearchPage() {
 
   /** Add a track to a platform playlist (Spotify or YouTube) */
   const handleAddToPlatformPlaylist = useCallback(async (track: Track, playlistId: string) => {
+    // Enforce uniqueness: block duplicate track URIs / video IDs
+    if (platformPlaylistTrackIds[playlistId]?.has(track.uri)) {
+      setDuplicateToast(`"${track.name}" is already in this playlist`);
+      setTimeout(() => setDuplicateToast(null), 3000);
+      return;
+    }
+
     if (track.platform === 'spotify' && spotifyToken) {
       await addTrackToSpotifyPlaylist(track.uri, playlistId, spotifyToken);
     } else if (track.platform === 'youtube' && youtubeToken) {
       await addTrackToYouTubePlaylist(track.uri, playlistId, youtubeToken);
     }
-  }, [spotifyToken, youtubeToken]);
+
+    // Update local set so checkmark persists
+    setPlatformPlaylistTrackIds(prev => {
+      const s = new Set(prev[playlistId] || []);
+      s.add(track.uri);
+      return { ...prev, [playlistId]: s };
+    });
+  }, [spotifyToken, youtubeToken, platformPlaylistTrackIds]);
 
   /** Lazy-load trackId sets for custom playlists not yet in playlistTrackIds */
   const handleRequestPlaylistTrackIds = useCallback(async (playlistIds: string[]) => {
@@ -783,6 +835,8 @@ export default function SearchPage() {
                 onRequestPlatformPlaylists={handleRequestPlatformPlaylists}
                 playlistTrackIds={playlistTrackIds}
                 onRequestPlaylistTrackIds={handleRequestPlaylistTrackIds}
+                platformPlaylistTrackIds={platformPlaylistTrackIds}
+                onRequestPlatformPlaylistTrackIds={handleRequestPlatformPlaylistTrackIds}
               />
             )}
 

@@ -43,6 +43,10 @@ interface TrackListProps {
   playlistTrackIds?: Record<string, Set<string>>;
   /** Called when the "Add to playlist" panel opens to lazy-load track ID sets */
   onRequestPlaylistTrackIds?: (playlistIds: string[]) => void;
+  /** Maps platform playlistId -> Set of track URIs/video IDs already in that playlist */
+  platformPlaylistTrackIds?: Record<string, Set<string>>;
+  /** Called to lazy-load track IDs for platform playlists */
+  onRequestPlatformPlaylistTrackIds?: (platform: 'spotify' | 'youtube', playlistIds: string[]) => void;
 }
 
 export default function TrackList({
@@ -63,6 +67,8 @@ export default function TrackList({
   onRequestPlatformPlaylists,
   playlistTrackIds,
   onRequestPlaylistTrackIds,
+  platformPlaylistTrackIds,
+  onRequestPlatformPlaylistTrackIds,
 }: TrackListProps) {
   const [feedbackId, setFeedbackId] = useState<{ trackId: string; action: 'queued' | 'next' } | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -166,6 +172,18 @@ export default function TrackList({
           .map(pl => pl.playlistId)
           .filter(id => !playlistTrackIds?.[id]);
         if (unloaded.length) onRequestPlaylistTrackIds(unloaded);
+      }
+      // Lazy-load trackId sets for platform playlists (when already fetched)
+      if (onRequestPlatformPlaylistTrackIds && track.platform !== 'soundcloud') {
+        const playlists = ownedPlatformPlaylists?.[track.platform];
+        if (Array.isArray(playlists) && playlists.length) {
+          const unloaded = playlists
+            .map(pl => pl.id)
+            .filter(id => !platformPlaylistTrackIds?.[id]);
+          if (unloaded.length) {
+            onRequestPlatformPlaylistTrackIds(track.platform as 'spotify' | 'youtube', unloaded);
+          }
+        }
       }
     }
     setAddToPlaylistOpenId(isOpen ? null : track.id);
@@ -437,18 +455,24 @@ export default function TrackList({
                                 ) : (
                                   platformPlaylists.map(pl => {
                                     const justAdded = addFeedback?.trackId === track.id && addFeedback.playlistId === pl.id;
+                                    const alreadyIn = platformPlaylistTrackIds?.[pl.id]?.has(track.uri) ?? false;
                                     return (
                                       <button
                                         key={pl.id}
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          handleAddToPlaylist(track, pl.id, onAddToPlatformPlaylist);
+                                          if (!alreadyIn) handleAddToPlaylist(track, pl.id, onAddToPlatformPlaylist);
                                         }}
-                                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-200 hover:bg-white/10 transition-colors"
+                                        disabled={alreadyIn}
+                                        className={`w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors ${
+                                          alreadyIn
+                                            ? 'text-gray-500 cursor-not-allowed pointer-events-none'
+                                            : 'text-gray-200 hover:bg-white/10 cursor-pointer'
+                                        }`}
                                       >
                                         <span className={`${meta.iconColor} shrink-0 text-xs`}>{meta.icon}</span>
                                         <span className="truncate flex-1 text-left">{pl.name}</span>
-                                        {justAdded && (
+                                        {(alreadyIn || justAdded) && (
                                           <svg className="w-3.5 h-3.5 text-green-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                           </svg>
