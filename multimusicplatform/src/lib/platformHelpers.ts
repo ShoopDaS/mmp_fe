@@ -77,6 +77,76 @@ export async function addTrackToYouTubePlaylist(videoId: string, playlistId: str
   });
 }
 
+// ========== Playlist Track ID Fetchers (lightweight, for duplicate detection) ==========
+
+/** Fetches up to 1000 track URIs from a Spotify playlist (10 pages × 100). */
+export async function fetchSpotifyPlaylistTrackUris(
+  playlistId: string,
+  token: string | null,
+): Promise<Set<string>> {
+  if (!token) return new Set();
+
+  const uris = new Set<string>();
+  let url: string | null =
+    `https://api.spotify.com/v1/playlists/${playlistId}/tracks?fields=${encodeURIComponent('items(track(uri)),next')}&limit=100`;
+  let page = 0;
+
+  while (url && page < 10) {
+    const res: Response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) break;
+
+    const data: any = await res.json();
+    for (const item of data.items || []) {
+      if (item.track?.uri) uris.add(item.track.uri);
+    }
+
+    url = data.next || null;
+    page++;
+  }
+
+  return uris;
+}
+
+/** Fetches up to 1000 video IDs from a YouTube playlist (20 pages × 50). */
+export async function fetchYouTubePlaylistVideoIds(
+  playlistId: string,
+  token: string | null,
+): Promise<Set<string>> {
+  if (!token) return new Set();
+
+  const ids = new Set<string>();
+  let pageToken: string | null = null;
+  let page = 0;
+
+  while (page < 20) {
+    const params = new URLSearchParams({
+      part: 'contentDetails',
+      playlistId,
+      maxResults: '50',
+    });
+    if (pageToken) params.set('pageToken', pageToken);
+
+    const res: Response = await fetch(
+      `https://www.googleapis.com/youtube/v3/playlistItems?${params}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (!res.ok) break;
+
+    const data: any = await res.json();
+    for (const item of data.items || []) {
+      if (item.contentDetails?.videoId) ids.add(item.contentDetails.videoId);
+    }
+
+    pageToken = data.nextPageToken || null;
+    if (!pageToken) break;
+    page++;
+  }
+
+  return ids;
+}
+
 // ========== Playlist Track Fetchers ==========
 
 export async function fetchSpotifyPlaylistTracks(playlistId: string, token: string | null): Promise<Track[]> {
