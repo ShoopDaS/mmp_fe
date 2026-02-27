@@ -57,8 +57,8 @@ export default function PlaylistSidebar({
     }
   };
 
-  const handleCreatePlaylist = useCallback(async (name: string, description: string) => {
-    const response = await apiClient.createCustomPlaylist(name, description);
+  const handleCreatePlaylist = useCallback(async (name: string, description: string, coverImage: string) => {
+    const response = await apiClient.createCustomPlaylist(name, description, coverImage);
     if (response.error) {
       throw new Error(response.error);
     }

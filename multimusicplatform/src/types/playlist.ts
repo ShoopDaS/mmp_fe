@@ -20,6 +20,7 @@ export interface CustomPlaylist {
   playlistId: string;
   name: string;
   description: string;
+  coverImage?: string;
   imageUrl: string | null;
   trackCount: number;
   createdAt: string;

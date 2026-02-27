@@ -1,4 +1,5 @@
 import { PlaylistsResponse, CustomPlaylist, CustomPlaylistsResponse, CustomPlaylistTracksResponse } from '@/types/playlist';
+import { DEFAULT_COVER } from '@/lib/constants/playlist';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://127.0.0.1:8080';
 
@@ -185,22 +186,22 @@ class ApiClient {
     );
   }
 
-  async createCustomPlaylist(name: string, description?: string) {
+  async createCustomPlaylist(name: string, description?: string, coverImage?: string) {
     return this.request<CustomPlaylist>(
       '/user/playlists',
       {
         method: 'POST',
-        body: JSON.stringify({ name, description: description || '' }),
+        body: JSON.stringify({ name, description: description || '', coverImage: coverImage || DEFAULT_COVER }),
       },
       true
     );
   }
 
-  async updateCustomPlaylist(playlistId: string, updates: { name?: string; description?: string; imageUrl?: string }) {
+  async updateCustomPlaylist(playlistId: string, updates: { name?: string; description?: string; coverImage?: string }) {
     return this.request<CustomPlaylist>(
       `/user/playlists/${encodeURIComponent(playlistId)}`,
       {
-        method: 'PUT',
+        method: 'PATCH',
         body: JSON.stringify(updates),
       },
       true

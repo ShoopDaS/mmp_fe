@@ -21,6 +21,8 @@ import {
   fetchYouTubePlaylistTracks,
   fetchSoundCloudPlaylistTracks,
 } from '@/lib/platformHelpers';
+import PlaylistEditSidebar from '@/components/playlists/PlaylistEditSidebar';
+import PlaylistCover from '@/components/music/PlaylistCover';
 
 interface Track {
   id: string;
@@ -112,6 +114,9 @@ export default function SearchPage() {
   // Maps custom playlistId -> Set of trackIds in that playlist (for uniqueness + checkmarks)
   const [playlistTrackIds, setPlaylistTrackIds] = useState<Record<string, Set<string>>>({});
   const [duplicateToast, setDuplicateToast] = useState<string | null>(null);
+
+  // Edit sidebar state
+  const [isEditSidebarOpen, setIsEditSidebarOpen] = useState(false);
 
   // User-owned platform playlists for "Add to playlist" dropdown
   // undefined = not yet fetched, 'loading' = fetching, array = done
@@ -393,6 +398,7 @@ export default function SearchPage() {
   const handlePlaylistSelect = async (playlist: UnifiedPlaylist) => {
     setActivePlaylist(playlist);
     setActiveTab('playlist');
+    setIsEditSidebarOpen(false);
     setIsLoadingPlaylistTracks(true);
     setPlaylistTracks([]);
 
@@ -506,6 +512,23 @@ export default function SearchPage() {
 
     // Fire API in background
     apiClient.removeTrackFromCustomPlaylist(activePlaylist.id, track.id);
+  };
+
+  // Derived: full CustomPlaylist object for the active playlist (null for non-MMP playlists)
+  const activeCustomPlaylist =
+    activePlaylist?.platform === 'mmp'
+      ? customPlaylists.find((p) => p.playlistId === activePlaylist.id) ?? null
+      : null;
+
+  /** Save edits from the edit sidebar */
+  const handlePlaylistEditSave = (updated: CustomPlaylist) => {
+    setCustomPlaylists((prev) =>
+      prev.map((p) => (p.playlistId === updated.playlistId ? updated : p))
+    );
+    if (activePlaylist?.id === updated.playlistId) {
+      setActivePlaylist((prev) => (prev ? { ...prev, name: updated.name } : prev));
+    }
+    setIsEditSidebarOpen(false);
   };
 
   /** Lazy-load the user's owned playlists for a platform when first requested */
@@ -663,6 +686,28 @@ export default function SearchPage() {
               onPlatformsChange={setSelectedPlatforms}
             />
 
+            {/* Custom playlist detail header */}
+            {activeTab === 'playlist' && activeCustomPlaylist && (
+              <div className="mt-6 flex items-center gap-4">
+                <PlaylistCover coverImage={activeCustomPlaylist.coverImage} size="md" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-xl font-bold text-white truncate">{activeCustomPlaylist.name}</h2>
+                    <button
+                      onClick={() => setIsEditSidebarOpen(true)}
+                      title="Edit playlist"
+                      className="flex-shrink-0 text-gray-400 hover:text-white transition-colors"
+                    >
+                      ✏️
+                    </button>
+                  </div>
+                  {activeCustomPlaylist.description && (
+                    <p className="text-sm text-gray-400 mt-1 line-clamp-2">{activeCustomPlaylist.description}</p>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Content Tabs */}
             {activePlaylist && (
               <div className="mt-6 flex items-center gap-1 border-b border-white/10">
@@ -780,6 +825,16 @@ export default function SearchPage() {
         <div className="fixed bottom-24 right-6 z-50 bg-gray-800 border border-white/20 text-white text-sm px-4 py-3 rounded-lg shadow-xl">
           {duplicateToast}
         </div>
+      )}
+
+      {/* Playlist edit sidebar */}
+      {activeCustomPlaylist && (
+        <PlaylistEditSidebar
+          playlist={activeCustomPlaylist}
+          isOpen={isEditSidebarOpen}
+          onClose={() => setIsEditSidebarOpen(false)}
+          onSave={handlePlaylistEditSave}
+        />
       )}
     </div>
   );
