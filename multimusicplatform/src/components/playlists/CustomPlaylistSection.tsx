@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiClient } from '@/lib/api';
 import { CustomPlaylist, UnifiedPlaylist } from '@/types/playlist';
+import PlaylistCover from '@/components/music/PlaylistCover';
 
 interface CustomPlaylistSectionProps {
   activePlaylistId: string | null;
@@ -147,19 +148,7 @@ export default function CustomPlaylistSection({
                 `}
               >
                 {/* Thumbnail */}
-                <div className="w-10 h-10 flex-shrink-0 rounded overflow-hidden bg-purple-900/50">
-                  {playlist.imageUrl ? (
-                    <img
-                      src={playlist.imageUrl}
-                      alt={playlist.name}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-purple-400 text-sm">
-                      🎧
-                    </div>
-                  )}
-                </div>
+                <PlaylistCover coverImage={playlist.coverImage} size="sm" />
 
                 {/* Info */}
                 <div className="flex-1 min-w-0">
@@ -167,6 +156,9 @@ export default function CustomPlaylistSection({
                   <p className="text-xs text-gray-400 truncate">
                     {playlist.trackCount} track{playlist.trackCount !== 1 ? 's' : ''}
                   </p>
+                  {playlist.description && (
+                    <p className="text-xs text-gray-500 truncate">{playlist.description}</p>
+                  )}
                 </div>
 
                 {/* Delete button */}
