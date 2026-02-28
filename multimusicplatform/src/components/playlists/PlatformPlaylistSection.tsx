@@ -183,6 +183,23 @@ export default function PlatformPlaylistSection({
 
 // ========== Spotify Client-Side Fetch ==========
 
+// Algorithmic playlist name patterns — order here determines sidebar order
+const ALGORITHMIC_ORDER = [
+  /^discover weekly$/i,
+  /^daily mix 1$/i,
+  /^daily mix 2$/i,
+  /^daily mix 3$/i,
+  /^daily mix 4$/i,
+  /^daily mix 5$/i,
+  /^daily mix 6$/i,
+  /^release radar$/i,
+];
+
+function algorithmicRank(name: string): number {
+  const idx = ALGORITHMIC_ORDER.findIndex(re => re.test(name.trim()));
+  return idx === -1 ? ALGORITHMIC_ORDER.length : idx;
+}
+
 async function fetchSpotifyPlaylists(token: string): Promise<UnifiedPlaylist[]> {
   const allPlaylists: UnifiedPlaylist[] = [];
   let url: string | null = 'https://api.spotify.com/v1/me/playlists?limit=50';
@@ -206,15 +223,18 @@ async function fetchSpotifyPlaylists(token: string): Promise<UnifiedPlaylist[]> 
         trackCount: item.tracks?.total || 0,
         imageUrl: item.images?.[0]?.url || null,
         uri: item.uri,
-        owner: item.owner?.display_name || '',
+        // Use owner.id 'spotify' (stable internal ID) instead of display_name
+        owner: item.owner?.id === 'spotify' ? 'Spotify' : (item.owner?.display_name || ''),
       });
     }
 
     url = data.next || null;
   }
 
-  const algorithmic = allPlaylists.filter(p => p.owner === 'Spotify');
-  const regular     = allPlaylists.filter(p => p.owner !== 'Spotify');
+  const algorithmic = allPlaylists
+    .filter(p => p.owner === 'Spotify')
+    .sort((a, b) => algorithmicRank(a.name) - algorithmicRank(b.name));
+  const regular = allPlaylists.filter(p => p.owner !== 'Spotify');
   return [...algorithmic, ...regular];
 }
 
