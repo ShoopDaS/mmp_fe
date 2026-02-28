@@ -215,7 +215,8 @@ async function fetchSpotifyPlaylists(token: string): Promise<UnifiedPlaylist[]> 
 
     const data: any = await response.json();
 
-    for (const item of data.items || []) {
+    for (const item of (data.items || [])) {
+      if (!item) continue; // Spotify can return null items for removed playlists
       allPlaylists.push({
         id: item.id,
         platform: 'spotify',
@@ -231,10 +232,16 @@ async function fetchSpotifyPlaylists(token: string): Promise<UnifiedPlaylist[]> 
     url = data.next || null;
   }
 
+  // Debug: log all playlist names + owner IDs so we can see what Spotify returns
+  console.log('[Spotify playlists] all fetched:', allPlaylists.map(p => `${p.name} (owner=${p.owner})`));
+
   const algorithmic = allPlaylists
     .filter(p => p.owner === 'Spotify')
     .sort((a, b) => algorithmicRank(a.name) - algorithmicRank(b.name));
   const regular = allPlaylists.filter(p => p.owner !== 'Spotify');
+
+  console.log('[Spotify playlists] algorithmic group:', algorithmic.map(p => p.name));
+
   return [...algorithmic, ...regular];
 }
 
