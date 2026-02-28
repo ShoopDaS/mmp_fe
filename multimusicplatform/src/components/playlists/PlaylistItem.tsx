@@ -85,7 +85,7 @@ export default function PlaylistItem({
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-gray-500 text-sm">
-            🎵
+            {playlist.id === 'liked-songs' ? '♥' : '🎵'}
           </div>
         )}
       </div>

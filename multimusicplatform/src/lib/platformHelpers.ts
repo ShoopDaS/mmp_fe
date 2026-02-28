@@ -186,6 +186,88 @@ export async function fetchSpotifyPlaylistTracks(playlistId: string, token: stri
   return allTracks;
 }
 
+export async function fetchSpotifyLikedTracks(token: string | null): Promise<Track[]> {
+  if (!token) return [];
+
+  const allTracks: Track[] = [];
+  let url: string | null = 'https://api.spotify.com/v1/me/tracks?limit=50';
+
+  while (url) {
+    const response: Response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!response.ok) break;
+
+    const data: any = await response.json();
+
+    for (const item of data.items || []) {
+      const track = item.track; // SavedTrack wrapper — different from playlist endpoint
+      if (!track || !track.id) continue;
+
+      allTracks.push({
+        id: `spotify-${track.id}`,
+        platform: 'spotify',
+        name: track.name,
+        uri: track.uri,
+        artists: track.artists,
+        album: track.album,
+        duration_ms: track.duration_ms,
+        preview_url: track.preview_url,
+      });
+    }
+
+    url = data.next || null;
+  }
+
+  return allTracks;
+}
+
+// ========== Spotify Like/Save Helpers ==========
+
+/** Checks if the given raw Spotify track IDs are in the user's Liked Songs. Returns a map of id → boolean. */
+export async function fetchSpotifyLikedStatus(
+  trackIds: string[],
+  token: string | null,
+): Promise<Record<string, boolean>> {
+  if (!token || trackIds.length === 0) return {};
+
+  const result: Record<string, boolean> = {};
+  for (let i = 0; i < trackIds.length; i += 50) {
+    const chunk = trackIds.slice(i, i + 50);
+    const res = await fetch(
+      `https://api.spotify.com/v1/me/tracks/contains?ids=${chunk.join(',')}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (!res.ok) break;
+    const booleans: boolean[] = await res.json();
+    chunk.forEach((id, idx) => { result[id] = booleans[idx]; });
+  }
+  return result;
+}
+
+/** Saves a track to the user's Liked Songs. Returns true on success. */
+export async function likeSpotifyTrack(trackId: string, token: string | null): Promise<boolean> {
+  if (!token) return false;
+  const res = await fetch('https://api.spotify.com/v1/me/tracks', {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids: [trackId] }),
+  });
+  return res.ok;
+}
+
+/** Removes a track from the user's Liked Songs. Returns true on success. */
+export async function unlikeSpotifyTrack(trackId: string, token: string | null): Promise<boolean> {
+  if (!token) return false;
+  const res = await fetch('https://api.spotify.com/v1/me/tracks', {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids: [trackId] }),
+  });
+  return res.ok;
+}
+
 export async function fetchYouTubePlaylistTracks(playlistId: string, token: string | null): Promise<Track[]> {
   if (!token) return [];
 

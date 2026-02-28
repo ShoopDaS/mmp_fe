@@ -8,6 +8,7 @@ import CustomPlaylistSection from './CustomPlaylistSection';
 import CreatePlaylistModal from './CreatePlaylistModal';
 import {
   fetchSpotifyPlaylistTracks,
+  fetchSpotifyLikedTracks,
   fetchYouTubePlaylistTracks,
   fetchSoundCloudPlaylistTracks,
 } from '@/lib/platformHelpers';
@@ -80,7 +81,11 @@ export default function PlaylistSidebar({
     // Fetch all tracks from the source platform playlist
     let tracks: Awaited<ReturnType<typeof fetchSpotifyPlaylistTracks>> = [];
     if (sourcePlaylist.platform === 'spotify') {
-      tracks = await fetchSpotifyPlaylistTracks(sourcePlaylist.id, spotifyToken);
+      if (sourcePlaylist.id === 'liked-songs') {
+        tracks = await fetchSpotifyLikedTracks(spotifyToken);
+      } else {
+        tracks = await fetchSpotifyPlaylistTracks(sourcePlaylist.id, spotifyToken);
+      }
     } else if (sourcePlaylist.platform === 'youtube') {
       tracks = await fetchYouTubePlaylistTracks(sourcePlaylist.uri, youtubeToken);
     } else if (sourcePlaylist.platform === 'soundcloud') {

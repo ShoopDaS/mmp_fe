@@ -48,8 +48,22 @@ export default function PlatformPlaylistSection({
           setError('No Spotify token');
           return;
         }
-        const spotifyPlaylists = await fetchSpotifyPlaylists(token);
-        setPlaylists(spotifyPlaylists);
+        const [spotifyPlaylists, likedCount] = await Promise.all([
+          fetchSpotifyPlaylists(token),
+          fetchSpotifyLikedCount(token),
+        ]);
+
+        const likedSongsEntry: UnifiedPlaylist = {
+          id: 'liked-songs',
+          platform: 'spotify',
+          name: 'Liked Songs',
+          trackCount: likedCount,
+          imageUrl: null,
+          uri: 'spotify:collection:tracks',
+          owner: 'You',
+        };
+
+        setPlaylists([likedSongsEntry, ...spotifyPlaylists]);
       } else {
         const response = await apiClient.getPlatformPlaylists(platform, false);
         if (response.error) {
@@ -199,5 +213,20 @@ async function fetchSpotifyPlaylists(token: string): Promise<UnifiedPlaylist[]> 
     url = data.next || null;
   }
 
-  return allPlaylists;
+  const algorithmic = allPlaylists.filter(p => p.owner === 'Spotify');
+  const regular     = allPlaylists.filter(p => p.owner !== 'Spotify');
+  return [...algorithmic, ...regular];
+}
+
+async function fetchSpotifyLikedCount(token: string): Promise<number> {
+  try {
+    const res = await fetch('https://api.spotify.com/v1/me/tracks?limit=1', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return 0;
+    const data = await res.json();
+    return data.total ?? 0;
+  } catch {
+    return 0;
+  }
 }

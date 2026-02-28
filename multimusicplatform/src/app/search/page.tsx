@@ -18,6 +18,10 @@ import {
   addTrackToSpotifyPlaylist,
   addTrackToYouTubePlaylist,
   fetchSpotifyPlaylistTracks,
+  fetchSpotifyLikedTracks,
+  fetchSpotifyLikedStatus,
+  likeSpotifyTrack,
+  unlikeSpotifyTrack,
   fetchYouTubePlaylistTracks,
   fetchSoundCloudPlaylistTracks,
   fetchSpotifyPlaylistTrackUris,
@@ -128,6 +132,9 @@ export default function SearchPage() {
 
   // Maps platform playlist ID -> Set of track URIs/video IDs already in that playlist
   const [platformPlaylistTrackIds, setPlatformPlaylistTrackIds] = useState<Record<string, Set<string>>>({});
+
+  // Liked Songs state — raw Spotify track IDs (without the "spotify-" prefix)
+  const [likedTrackIds, setLikedTrackIds] = useState<Set<string>>(new Set());
   const fetchedPlatformPlaylistTrackIds = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -347,6 +354,7 @@ export default function SearchPage() {
 
       const allTracks = [...spotifyTracks, ...soundcloudTracks, ...youtubeTracks];
       setTracks(allTracks);
+      updateLikedStatus(allTracks);
     } catch (error) {
       console.error('Search error:', error);
     } finally {
@@ -388,10 +396,53 @@ export default function SearchPage() {
     }
   }, []);
 
+  const updateLikedStatus = useCallback(async (loadedTracks: Track[]) => {
+    const spotifyTracks = loadedTracks.filter(t => t.platform === 'spotify');
+    if (!spotifyToken || spotifyTracks.length === 0) return;
+    const rawIds = spotifyTracks.map(t => t.id.replace('spotify-', ''));
+    const statusMap = await fetchSpotifyLikedStatus(rawIds, spotifyToken);
+    setLikedTrackIds(prev => {
+      const next = new Set(prev);
+      for (const [rawId, liked] of Object.entries(statusMap)) {
+        if (liked) next.add(rawId);
+        else next.delete(rawId);
+      }
+      return next;
+    });
+  }, [spotifyToken]);
+
+  const handleToggleLike = useCallback(async (track: Track) => {
+    if (track.platform !== 'spotify' || !spotifyToken) return;
+    const rawId = track.id.replace('spotify-', '');
+    const isCurrentlyLiked = likedTrackIds.has(rawId);
+    // Optimistic update
+    setLikedTrackIds(prev => {
+      const next = new Set(prev);
+      if (isCurrentlyLiked) next.delete(rawId);
+      else next.add(rawId);
+      return next;
+    });
+    const success = isCurrentlyLiked
+      ? await unlikeSpotifyTrack(rawId, spotifyToken)
+      : await likeSpotifyTrack(rawId, spotifyToken);
+    // Revert on failure
+    if (!success) {
+      setLikedTrackIds(prev => {
+        const next = new Set(prev);
+        if (isCurrentlyLiked) next.add(rawId);
+        else next.delete(rawId);
+        return next;
+      });
+    }
+  }, [likedTrackIds, spotifyToken]);
+
   const loadPlaylistTracks = async (playlist: UnifiedPlaylist): Promise<Track[]> => {
     if (playlist.platform === 'mmp') {
       return fetchCustomPlaylistTracks(playlist.id);
     } else if (playlist.platform === 'spotify') {
+      if (playlist.id === 'liked-songs') {
+        return fetchSpotifyLikedTracks(spotifyToken);
+      }
       return fetchSpotifyPlaylistTracks(playlist.id, spotifyToken);
     } else if (playlist.platform === 'youtube') {
       return fetchYouTubePlaylistTracks(playlist.uri, youtubeToken);
@@ -411,6 +462,7 @@ export default function SearchPage() {
     try {
       const loadedTracks = await loadPlaylistTracks(playlist);
       setPlaylistTracks(loadedTracks);
+      updateLikedStatus(loadedTracks);
     } catch (error) {
       console.error('Error loading playlist tracks:', error);
     } finally {
@@ -837,6 +889,8 @@ export default function SearchPage() {
                 onRequestPlaylistTrackIds={handleRequestPlaylistTrackIds}
                 platformPlaylistTrackIds={platformPlaylistTrackIds}
                 onRequestPlatformPlaylistTrackIds={handleRequestPlatformPlaylistTrackIds}
+                likedTrackIds={likedTrackIds}
+                onToggleLike={handleToggleLike}
               />
             )}
 

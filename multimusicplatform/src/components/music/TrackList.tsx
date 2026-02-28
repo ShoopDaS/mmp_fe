@@ -47,6 +47,10 @@ interface TrackListProps {
   platformPlaylistTrackIds?: Record<string, Set<string>>;
   /** Called to lazy-load track IDs for platform playlists */
   onRequestPlatformPlaylistTrackIds?: (platform: 'spotify' | 'youtube', playlistIds: string[]) => void;
+  /** Raw Spotify track IDs (without "spotify-" prefix) that are in the user's Liked Songs */
+  likedTrackIds?: Set<string>;
+  /** Called when the user clicks the heart button on a Spotify track */
+  onToggleLike?: (track: Track) => void;
 }
 
 export default function TrackList({
@@ -69,6 +73,8 @@ export default function TrackList({
   onRequestPlaylistTrackIds,
   platformPlaylistTrackIds,
   onRequestPlatformPlaylistTrackIds,
+  likedTrackIds,
+  onToggleLike,
 }: TrackListProps) {
   const [feedbackId, setFeedbackId] = useState<{ trackId: string; action: 'queued' | 'next' } | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -309,6 +315,25 @@ export default function TrackList({
                 </p>
                 <p className="text-xs text-gray-400 truncate">{track.album.name}</p>
               </div>
+
+              {/* Heart button — Spotify only */}
+              {track.platform === 'spotify' && onToggleLike && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onToggleLike(track); }}
+                  className="p-2 rounded-full text-gray-400 hover:text-white transition-all opacity-0 group-hover:opacity-100 shrink-0"
+                  title={likedTrackIds?.has(track.id.replace('spotify-', '')) ? 'Unlike' : 'Like'}
+                >
+                  {likedTrackIds?.has(track.id.replace('spotify-', '')) ? (
+                    <svg className="w-4 h-4 text-green-400" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                    </svg>
+                  )}
+                </button>
+              )}
 
               {/* Track menu (kebab) */}
               <div className="relative shrink-0" ref={openMenuId === track.id ? menuRef : undefined}>
