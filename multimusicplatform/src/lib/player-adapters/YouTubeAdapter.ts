@@ -12,6 +12,7 @@ export class YouTubeAdapter implements IPlayerAdapter {
   private apiReady: boolean = false;
   private playerReady: boolean = false;
   private volumeBeforeSuspend: number | null = null;
+  private destroyed = false;
 
   private state: PlayerState = {
     isPlaying: false,
@@ -29,30 +30,36 @@ export class YouTubeAdapter implements IPlayerAdapter {
 
   async initialize(token: string): Promise<boolean> {
     this.token = token;
+    this.destroyed = false;
     console.log('🎵 [YouTube] Initializing...');
 
     return new Promise((resolve) => {
-      // Load YouTube IFrame API only, don't create player yet
-      if (!(window as any).YT) {
-        const tag = document.createElement('script');
-        tag.src = 'https://www.youtube.com/iframe_api';
-        const firstScriptTag = document.getElementsByTagName('script')[0];
-        firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
-
-        // YouTube API calls this when ready
-        (window as any).onYouTubeIframeAPIReady = () => {
-          console.log('✅ [YouTube] API Ready');
-          this.apiReady = true;
-          this.state.canPlay = true;
-          this.notifyStateChange();
-          resolve(true);
-        };
-      } else {
+      if ((window as any).YT) {
+        // API already loaded
         console.log('✅ [YouTube] API Already Loaded');
         this.apiReady = true;
         this.state.canPlay = true;
         this.notifyStateChange();
         resolve(true);
+        return;
+      }
+
+      // YouTube API calls this when ready (latest adapter wins)
+      (window as any).onYouTubeIframeAPIReady = () => {
+        if (this.destroyed) { resolve(false); return; }
+        console.log('✅ [YouTube] API Ready');
+        this.apiReady = true;
+        this.state.canPlay = true;
+        this.notifyStateChange();
+        resolve(true);
+      };
+
+      // Only inject the script tag once (survives React re-mounts)
+      if (!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) {
+        const tag = document.createElement('script');
+        tag.src = 'https://www.youtube.com/iframe_api';
+        const firstScriptTag = document.getElementsByTagName('script')[0];
+        firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
       }
     });
   }
@@ -109,6 +116,7 @@ export class YouTubeAdapter implements IPlayerAdapter {
   }
 
   private handleStateChange(state: number): void {
+    if (this.destroyed) return;
     const YT = (window as any).YT;
 
     switch (state) {
@@ -301,6 +309,7 @@ export class YouTubeAdapter implements IPlayerAdapter {
   }
 
   cleanup(): void {
+    this.destroyed = true;
     console.log('🧹 [YouTube] Cleaning up...');
 
     this.stopProgressTracking();
@@ -334,7 +343,7 @@ export class YouTubeAdapter implements IPlayerAdapter {
   }
 
   private notifyStateChange(): void {
-    if (this.stateChangeCallback) {
+    if (!this.destroyed && this.stateChangeCallback) {
       this.stateChangeCallback(this.getState());
     }
   }

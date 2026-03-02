@@ -26,20 +26,34 @@ export class SoundCloudAdapter implements IPlayerAdapter {
 
     return new Promise((resolve) => {
       if (!(window as any).SC) {
-        const script = document.createElement('script');
-        script.src = 'https://w.soundcloud.com/player/api.js';
-        script.async = true;
-        
-        script.onload = () => {
-          if (this.isDestroyed) return resolve(false);
-          this.initWidget().then(resolve);
-        };
-        script.onerror = () => {
-          console.error('❌ [SoundCloud] Failed to load SDK script');
-          resolve(false);
-        };
-        
-        document.body.appendChild(script);
+        // Only inject the script tag once (survives React re-mounts)
+        if (!document.querySelector('script[src="https://w.soundcloud.com/player/api.js"]')) {
+          const script = document.createElement('script');
+          script.src = 'https://w.soundcloud.com/player/api.js';
+          script.async = true;
+
+          script.onload = () => {
+            if (this.isDestroyed) return resolve(false);
+            this.initWidget().then(resolve);
+          };
+          script.onerror = () => {
+            console.error('❌ [SoundCloud] Failed to load SDK script');
+            resolve(false);
+          };
+
+          document.body.appendChild(script);
+        } else {
+          // Script tag exists but hasn't loaded yet — poll for it
+          const waitForSC = setInterval(() => {
+            if ((window as any).SC) {
+              clearInterval(waitForSC);
+              if (this.isDestroyed) return resolve(false);
+              this.initWidget().then(resolve);
+            }
+          }, 100);
+          // Give up after 10s
+          setTimeout(() => { clearInterval(waitForSC); resolve(false); }, 10000);
+        }
       } else {
         this.initWidget().then(resolve);
       }
