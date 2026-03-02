@@ -29,17 +29,14 @@ export class SpotifyAdapter implements IPlayerAdapter {
   private errorCallback?: (error: Error) => void;
   private progressInterval?: NodeJS.Timeout;
   private playAbortController: AbortController | null = null;
-  // Monotonically increasing counter — lets debounce detect stale calls
   private playSequence = 0;
-  // Pending restore() resolver — set by suspend/restore cycle for premium players
-  private onRestoreResolve: ((success: boolean) => void) | null = null;
+  private volumeBeforeSuspend: number | null = null;
 
   async initialize(token: string): Promise<boolean> {
     this.token = token;
     console.log('🎵 [Spotify] Initializing...');
 
     return new Promise((resolve) => {
-      // Load Spotify SDK
       if (!window.Spotify) {
         const script = document.createElement('script');
         script.src = 'https://sdk.scdn.co/spotify-player.js';
@@ -66,42 +63,39 @@ export class SpotifyAdapter implements IPlayerAdapter {
       volume: this.state.volume,
     });
 
-    // Assign early so cleanup can find it if needed
     this.player = player;
 
-    // Premium player ready
     player.addListener('ready', ({ device_id }: any) => {
       console.log('✅ [Spotify] Premium Ready! Device:', device_id);
       this.deviceId = device_id;
       this.isPremium = true;
       this.state.canPlay = true;
       this.notifyStateChange();
-      // Resolve any restore() call that was waiting for reconnection
-      if (this.onRestoreResolve) {
-        this.onRestoreResolve(true);
-        this.onRestoreResolve = null;
-      }
     });
 
     player.addListener('not_ready', () => {
       console.log('❌ [Spotify] Not ready');
     });
 
-    // Track state changes
+    // Track state changes organically (doesn't poll)
     player.addListener('player_state_changed', (spotifyState: any) => {
       if (!spotifyState) return;
 
+      const wasPlaying = this.state.isPlaying;
       this.state.isPlaying = !spotifyState.paused;
 
-      // Guard against transition states where the SDK briefly reports duration=0
-      // (e.g. right after a failed play attempt or an adapter.pause() call).
-      // Writing duration=0 sets max=1 on the seek bar, making seeking impossible.
       if (spotifyState.duration > 0) {
         this.state.currentTime = spotifyState.position;
         this.state.duration = spotifyState.duration;
       }
 
-      // Check if track ended
+      // Auto-start/stop the local progress tick
+      if (this.state.isPlaying && !wasPlaying) {
+        this.startProgressTracking();
+      } else if (!this.state.isPlaying && wasPlaying) {
+        this.stopProgressTracking();
+      }
+
       if (spotifyState.position === 0 && spotifyState.paused && this.state.duration > 0) {
         this.handleTrackEnd();
       }
@@ -109,7 +103,6 @@ export class SpotifyAdapter implements IPlayerAdapter {
       this.notifyStateChange();
     });
 
-    // Handle Premium requirement errors
     player.addListener('account_error', (e: any) => {
       console.error('❌ [Spotify] Account error:', e.message);
       this.isPremium = false;
@@ -141,16 +134,12 @@ export class SpotifyAdapter implements IPlayerAdapter {
 
   private initPreviewMode() {
     console.log('🎵 [Spotify] Using Preview Mode (Free account)');
-    
-    if (this.audioElement) {
-      this.audioElement.pause();
-    }
+    if (this.audioElement) this.audioElement.pause();
     
     this.audioElement = new Audio();
     this.audioElement.volume = this.state.volume;
     this.audioElement.loop = this.state.isLooping;
 
-    // Track progress for preview
     this.audioElement.addEventListener('timeupdate', () => {
       if (this.audioElement) {
         this.state.currentTime = this.audioElement.currentTime * 1000;
@@ -159,14 +148,8 @@ export class SpotifyAdapter implements IPlayerAdapter {
       }
     });
 
-    // Track when preview ends
-    this.audioElement.addEventListener('ended', () => {
-      this.handleTrackEnd();
-    });
-
-    this.audioElement.addEventListener('error', () => {
-      this.notifyError(new Error('Playback error'));
-    });
+    this.audioElement.addEventListener('ended', () => this.handleTrackEnd());
+    this.audioElement.addEventListener('error', () => this.notifyError(new Error('Playback error')));
 
     this.state.canPlay = true;
     this.notifyStateChange();
@@ -174,23 +157,13 @@ export class SpotifyAdapter implements IPlayerAdapter {
 
   async play(track: Track): Promise<void> {
     console.log('🎵 [Spotify] Play requested:', track.name);
-
-    // Abort any in-flight fetch immediately so the previous request doesn't
-    // land on Spotify's server while we're already trying to play the next track.
     this.playAbortController?.abort();
     this.playAbortController = null;
 
     if (this.isPremium && this.deviceId) {
-      // Debounce: stamp this call with a sequence number, wait 300 ms, then
-      // bail out if a newer call has already superseded us.  This prevents
-      // rapid song switches from firing multiple overlapping API requests that
-      // Spotify rejects with 403 while its player is still transitioning.
       const seq = ++this.playSequence;
       await new Promise<void>(resolve => setTimeout(resolve, 300));
-      if (seq !== this.playSequence) {
-        console.log('🚫 [Spotify] Debounced — superseded by newer play request');
-        return;
-      }
+      if (seq !== this.playSequence) return;
 
       const controller = new AbortController();
       this.playAbortController = controller;
@@ -204,78 +177,43 @@ export class SpotifyAdapter implements IPlayerAdapter {
 
   private async playPremium(track: Track, signal?: AbortSignal, attempt = 0): Promise<void> {
     try {
-      const res = await fetch(
-        `https://api.spotify.com/v1/me/player/play?device_id=${this.deviceId}`,
-        {
-          method: 'PUT',
-          body: JSON.stringify({ uris: [track.uri] }),
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${this.token}`,
-          },
-          signal,
-        }
-      );
+      const res = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${this.deviceId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ uris: [track.uri] }),
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.token}` },
+        signal,
+      });
 
-      if (res.ok || res.status === 204) {
-        console.log('✅ [Spotify] Playing Premium');
-        this.startProgressTracking();
-        return;
-      }
+      if (res.ok || res.status === 204) return;
 
       if (res.status === 403 || res.status === 404) {
-        // Parse error body to distinguish error classes.
-        // Spotify format: { error: { status, message, reason } }
-        let reason = 'UNKNOWN';
-        let message = '';
-        let rawBody = '';
+        let reason = 'UNKNOWN', message = '';
         try {
-          rawBody = await res.text();
-          const parsed = JSON.parse(rawBody);
-          reason  = parsed?.error?.reason  ?? 'UNKNOWN';
+          const parsed = await res.json();
+          reason = parsed?.error?.reason ?? 'UNKNOWN';
           message = parsed?.error?.message ?? '';
-        } catch { /* ignore parse failures */ }
-
-        console.warn(`⚠️ [Spotify] ${res.status} reason="${reason}" message="${message}"`);
+        } catch {}
 
         if (reason === 'PREMIUM_REQUIRED') {
-          console.warn('❌ [Spotify] Premium required — falling back to preview mode');
           this.isPremium = false;
           this.initPreviewMode();
-          if (track.preview_url) {
-            this.playPreview(track);
-          } else {
-            throw new Error('Premium account required for this track.');
-          }
+          if (track.preview_url) this.playPreview(track);
+          else throw new Error('Premium account required for this track.');
           return;
         }
 
-        // "Restriction violated" = track removed from Spotify or unavailable in
-        // this market.  This is permanent for the track — don't retry, don't
-        // touch isPremium.
-        if (message.includes('Restriction violated')) {
-          throw new Error('This track is not available on Spotify (removed or region-restricted).');
-        }
+        if (message.includes('Restriction violated')) throw new Error('This track is not available on Spotify.');
 
-        // Any other 403/404 is transient (device mid-transition, OAuth layer, etc.).
-        // Retry once after 500 ms before giving up. isPremium is NOT touched.
         if (attempt === 0) {
-          console.warn('⚠️ [Spotify] Transient error — retrying in 500 ms...');
           await new Promise<void>(resolve => setTimeout(resolve, 500));
-          if (signal?.aborted) return; // Song changed while we were waiting
+          if (signal?.aborted) return;
           return this.playPremium(track, signal, 1);
         }
-
         throw new Error(`Play failed: ${res.status} (${reason})`);
       }
-
       throw new Error(`Play failed: ${res.status}`);
     } catch (e) {
-      if (e instanceof Error && e.name === 'AbortError') {
-        console.log('🚫 [Spotify] Play request cancelled (song changed)');
-        return;
-      }
-      console.error('❌ [Spotify] Error:', e);
+      if (e instanceof Error && e.name === 'AbortError') return;
       this.notifyError(e as Error);
       throw e;
     }
@@ -283,8 +221,6 @@ export class SpotifyAdapter implements IPlayerAdapter {
 
   private playPreview(track: Track): void {
     if (!this.audioElement || !track.preview_url) return;
-
-    console.log('🎵 [Spotify] Playing Preview (30s)');
     this.audioElement.src = track.preview_url;
     this.audioElement.play();
     this.state.isPlaying = true;
@@ -292,21 +228,17 @@ export class SpotifyAdapter implements IPlayerAdapter {
   }
 
   async pause(): Promise<void> {
-    if (this.isPremium && this.player) {
-      await this.player.pause();
-    } else if (this.audioElement) {
+    if (this.isPremium && this.player) await this.player.pause();
+    else if (this.audioElement) {
       this.audioElement.pause();
       this.state.isPlaying = false;
       this.notifyStateChange();
     }
-    this.stopProgressTracking();
   }
 
   async resume(): Promise<void> {
-    if (this.isPremium && this.player) {
-      await this.player.resume();
-      this.startProgressTracking();
-    } else if (this.audioElement) {
+    if (this.isPremium && this.player) await this.player.resume();
+    else if (this.audioElement) {
       await this.audioElement.play();
       this.state.isPlaying = true;
       this.notifyStateChange();
@@ -314,11 +246,8 @@ export class SpotifyAdapter implements IPlayerAdapter {
   }
 
   async togglePlay(): Promise<void> {
-    if (this.state.isPlaying) {
-      await this.pause();
-    } else {
-      await this.resume();
-    }
+    if (this.state.isPlaying) await this.pause();
+    else await this.resume();
   }
 
   async seek(positionMs: number): Promise<void> {
@@ -362,84 +291,38 @@ export class SpotifyAdapter implements IPlayerAdapter {
   }
 
   async suspend(): Promise<void> {
-    console.log('💤 [Spotify] Suspending...');
     await this.pause();
 
-    // Silence the preview audio element so it can't leak if pause is slow
     if (this.audioElement) {
       this.audioElement.volume = 0;
     }
 
-    // Disconnect from Spotify Connect so the MMP device disappears from other
-    // Spotify clients. This prevents an external app from pushing playback
-    // to this device while it's not the active platform in MMP.
-    if (this.isPremium && this.player && this.deviceId) {
-      this.deviceId = '';
-      this.state.canPlay = false;
-      this.notifyStateChange();
-      try {
-        await this.player.disconnect();
-        console.log('🔌 [Spotify] Disconnected from Spotify Connect');
-      } catch (e) {
-        console.warn('[Spotify] Disconnect failed (non-fatal):', e);
-      }
+    if (this.isPremium && this.player) {
+      this.volumeBeforeSuspend = this.state.volume;
+      await this.player.setVolume(0);
     }
   }
 
   async restore(): Promise<boolean> {
-    console.log('🔄 [Spotify] Restoring...');
-
-    // Restore preview audio element volume
     if (this.audioElement) {
       this.audioElement.volume = this.state.volume;
     }
 
-    // Reconnect to Spotify Connect if we disconnected during suspend()
-    if (this.isPremium && this.player && !this.deviceId) {
-      return new Promise<boolean>((resolve) => {
-        const timeout = setTimeout(() => {
-          // Timed out waiting for ready — resolve false so the caller can show an error
-          if (this.onRestoreResolve === resolve) this.onRestoreResolve = null;
-          console.warn('[Spotify] Reconnect timed out');
-          resolve(false);
-        }, 8000);
-
-        this.onRestoreResolve = (success) => {
-          clearTimeout(timeout);
-          resolve(success);
-        };
-
-        this.player.connect().then((connected: boolean) => {
-          if (!connected) {
-            clearTimeout(timeout);
-            if (this.onRestoreResolve) { this.onRestoreResolve(false); this.onRestoreResolve = null; }
-          }
-          // If connected, wait for the 'ready' event to fire (handled above)
-        }).catch(() => {
-          clearTimeout(timeout);
-          if (this.onRestoreResolve) { this.onRestoreResolve(false); this.onRestoreResolve = null; }
-        });
-      });
+    if (this.isPremium && this.player && this.volumeBeforeSuspend !== null) {
+      await this.player.setVolume(this.volumeBeforeSuspend);
+      this.volumeBeforeSuspend = null;
     }
 
-    // Free-tier or already connected — nothing to reconnect
     return true;
   }
 
   cleanup(): void {
-    console.log('🧹 [Spotify] Cleaning up...');
     this.stopProgressTracking();
 
-    this.playSequence++; // Invalidate any pending debounced play
+    this.playSequence++; 
     if (this.playAbortController) {
       this.playAbortController.abort();
       this.playAbortController = null;
-    }
-
-    // Cancel any in-flight restore() promise
-    if (this.onRestoreResolve) {
-      this.onRestoreResolve(false);
-      this.onRestoreResolve = null;
     }
 
     if (this.player) {
@@ -473,45 +356,23 @@ export class SpotifyAdapter implements IPlayerAdapter {
   }
 
   private handleTrackEnd(): void {
-    console.log('🏁 [Spotify] Track ended');
     this.state.isPlaying = false;
     this.stopProgressTracking();
 
-    if (this.state.isLooping && this.trackEndCallback) {
-      // If looping, replay will be handled by the player component
-      this.trackEndCallback();
-    } else if (this.trackEndCallback) {
+    if (this.trackEndCallback) {
       this.trackEndCallback();
     }
 
     this.notifyStateChange();
   }
 
-  private notifyError(error: Error): void {
-    if (this.errorCallback) {
-      this.errorCallback(error);
-    }
-  }
-
-  // 🚨 THE SHIELD: Progress tracking wrapped in try/catch to survive SDK streamer crashes
   private startProgressTracking(): void {
     this.stopProgressTracking();
-    this.progressInterval = setInterval(async () => {
-      if (this.isPremium && this.player) {
-        try {
-          const state = await this.player.getCurrentState();
-          // Same duration>0 guard as player_state_changed: SDK can return
-          // duration=0 during transitions and that would break the seek bar.
-          if (state && state.duration > 0) {
-            this.state.currentTime = state.position;
-            this.state.duration = state.duration;
-            this.notifyStateChange();
-          }
-        } catch (err) {
-          // Swallow the _streamer error silently.
-          // The player will catch up automatically when the streamer reconnects.
-          console.warn('Spotify SDK internal sync skipped:', err);
-        }
+    
+    this.progressInterval = setInterval(() => {
+      if (this.state.isPlaying && this.state.duration > 0) {
+        this.state.currentTime = Math.min(this.state.currentTime + 500, this.state.duration);
+        this.notifyStateChange();
       }
     }, 500); 
   }
@@ -520,6 +381,13 @@ export class SpotifyAdapter implements IPlayerAdapter {
     if (this.progressInterval) {
       clearInterval(this.progressInterval);
       this.progressInterval = undefined;
+    }
+  }
+
+  // Add the missing notifyError function here:
+  private notifyError(error: Error): void {
+    if (this.errorCallback) {
+      this.errorCallback(error);
     }
   }
 }
