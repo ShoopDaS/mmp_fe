@@ -77,47 +77,66 @@ export default function SearchPage() {
     }
   }, [authLoading, isAuthenticated, router]);
 
+  // Extract ID to prevent unnecessary re-fetches when playlist object (like name) updates
+  const activePlaylistId = activePlaylist?.id;
+  const activePlaylistPlatform = activePlaylist?.platform;
+  const activePlaylistUri = activePlaylist?.uri;
+
   // Handle activePlaylist changes (from the LeftSidebar)
   useEffect(() => {
-    if (!activePlaylist) return;
+    if (!activePlaylistId || !activePlaylistPlatform) return;
+
+    let isMounted = true;
 
     const loadPlaylist = async () => {
       setIsLoadingPlaylistTracks(true);
       try {
         let loadedTracks: Track[] = [];
-        if (activePlaylist.platform === 'mmp') {
-          const res = await apiClient.getCustomPlaylistTracks(activePlaylist.id);
+        if (activePlaylistPlatform === 'mmp') {
+          const res = await apiClient.getCustomPlaylistTracks(activePlaylistId);
           if (!res.error && res.data?.tracks) {
             loadedTracks = res.data.tracks.map((item: CustomTrackItem) => ({
               id: item.trackId, platform: item.platform, name: item.name, uri: item.uri,
               artists: item.artists, album: { name: item.albumName, images: item.albumImageUrl ? [{ url: item.albumImageUrl }] : [] },
               duration_ms: item.duration_ms, preview_url: item.preview_url,
             }));
-            setPlaylistTrackIds(prev => ({ ...prev, [activePlaylist.id]: new Set(res.data!.tracks.map((t: CustomTrackItem) => t.trackId)) }));
+            
+            if (isMounted) {
+              setPlaylistTrackIds(prev => ({ ...prev, [activePlaylistId]: new Set(res.data!.tracks.map((t: CustomTrackItem) => t.trackId)) }));
+            }
           }
-        } else if (activePlaylist.platform === 'spotify') loadedTracks = await fetchSpotifyPlaylistTracks(activePlaylist.id, spotifyToken);
-        else if (activePlaylist.platform === 'youtube') loadedTracks = await fetchYouTubePlaylistTracks(activePlaylist.uri, youtubeToken);
-        else if (activePlaylist.platform === 'soundcloud') loadedTracks = await fetchSoundCloudPlaylistTracks(activePlaylist.id, soundcloudToken);
+        } else if (activePlaylistPlatform === 'spotify') {
+          loadedTracks = await fetchSpotifyPlaylistTracks(activePlaylistId, spotifyToken);
+        } else if (activePlaylistPlatform === 'youtube') {
+          loadedTracks = await fetchYouTubePlaylistTracks(activePlaylistUri || activePlaylistId, youtubeToken);
+        } else if (activePlaylistPlatform === 'soundcloud') {
+          loadedTracks = await fetchSoundCloudPlaylistTracks(activePlaylistId, soundcloudToken);
+        }
         
-        setPlaylistTracks(loadedTracks);
-        setActiveTab('playlist'); // Force tab to switch when playlist changes
+        if (isMounted) {
+          setPlaylistTracks(loadedTracks);
+          setActiveTab('playlist'); 
+        }
       } catch (err) {
         console.error(err);
       } finally {
-        setIsLoadingPlaylistTracks(false);
+        if (isMounted) setIsLoadingPlaylistTracks(false);
       }
     };
+
     loadPlaylist();
-  }, [activePlaylist, spotifyToken, youtubeToken, soundcloudToken, setPlaylistTrackIds]);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activePlaylistId, activePlaylistPlatform, activePlaylistUri, spotifyToken, youtubeToken, soundcloudToken, setPlaylistTrackIds]);
 
   const searchSpotify = async (query: string): Promise<Track[]> => {
     if (!spotifyToken || !selectedPlatforms.spotify) return [];
     try {
-      const res = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=20`, { headers: { Authorization: `Bearer ${spotifyToken}` } });
-      if (res.status === 401) {
-        await loadPlatformTokens();
-        return [];
-      }
+      const res = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=20`, { 
+        headers: { Authorization: `Bearer ${spotifyToken}` } 
+      });
       const data = await res.json();
       return (data.tracks?.items || []).map((item: any) => ({
         id: `spotify-${item.id}`, platform: 'spotify', name: item.name, uri: item.uri,
@@ -143,17 +162,33 @@ export default function SearchPage() {
         return [];
       }
       const searchData = await res.json();
-      const videoIds = (searchData.items || []).map((item: any) => item.id.videoId);
+      const videoIds = (searchData.items || []).map((item: any) => item.id?.videoId).filter(Boolean);
+      
       if (videoIds.length === 0) return [];
 
       const det = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,status&id=${videoIds.join(',')}&maxResults=20`, { headers: { Authorization: `Bearer ${youtubeToken}` } });
       const detData = await det.json();
 
-      return (detData.items || []).filter((item: any) => item.status?.embeddable === true && !item.contentDetails?.contentRating?.ytRating && !item.contentDetails?.regionRestriction?.blocked).map((item: any) => ({
-        id: `youtube-${item.id}`, platform: 'youtube', name: item.snippet.title, uri: item.id,
-        artists: [{ name: item.snippet.channelTitle }], album: { name: item.snippet.channelTitle, images: item.snippet.thumbnails?.high ? [{ url: item.snippet.thumbnails.high.url }] : [] },
-        duration_ms: (parseInt(item.contentDetails?.duration?.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/)?.[3] || '0') * 1000) || 0, preview_url: null,
-      }));
+      return (detData.items || [])
+        .filter((item: any) => item.status?.embeddable === true && !item.contentDetails?.contentRating?.ytRating && !item.contentDetails?.regionRestriction?.blocked)
+        .map((item: any) => {
+          let duration_ms = 0;
+          const durationStr = item.contentDetails?.duration || 'PT0S';
+          const match = durationStr.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+          
+          if (match) {
+            const hours = parseInt(match[1] || '0', 10);
+            const minutes = parseInt(match[2] || '0', 10);
+            const seconds = parseInt(match[3] || '0', 10);
+            duration_ms = (hours * 3600 + minutes * 60 + seconds) * 1000;
+          }
+
+          return {
+            id: `youtube-${item.id}`, platform: 'youtube', name: item.snippet.title, uri: item.id,
+            artists: [{ name: item.snippet.channelTitle }], album: { name: item.snippet.channelTitle, images: item.snippet.thumbnails?.high ? [{ url: item.snippet.thumbnails.high.url }] : [] },
+            duration_ms, preview_url: null,
+          };
+        });
     } catch { return []; }
   };
 
@@ -248,14 +283,14 @@ export default function SearchPage() {
     }));
   }, [playlistTrackIds, setPlaylistTrackIds]);
 
-  if (authLoading) return <AppLayout><div className="flex h-full items-center justify-center text-text-secondary">Loading...</div></AppLayout>;
+  if (authLoading) return <div className="flex h-full items-center justify-center text-text-secondary">Loading...</div>;
 
-  const activeCustomPlaylist = activePlaylist?.platform === 'mmp' ? customPlaylists.find(p => p.playlistId === activePlaylist.id) ?? null : null;
+  const activeCustomPlaylist = activePlaylistPlatform === 'mmp' ? customPlaylists.find(p => p.playlistId === activePlaylistId) ?? null : null;
   const displayTracks = activeTab === 'playlist' ? playlistTracks : tracks;
   const isLoading = activeTab === 'playlist' ? isLoadingPlaylistTracks : isSearching;
 
   return (
-    <AppLayout>
+    <>
       <div className="max-w-5xl mx-auto px-8 py-10">
         <h1 className="text-4xl font-bold text-white mb-8 tracking-tight">Search Music</h1>
 
@@ -301,11 +336,16 @@ export default function SearchPage() {
             tracks={displayTracks}
             onPlay={handlePlayTrack}
             onTogglePlay={triggerTogglePlay} 
-            onAddToQueue={queue.addToQueue}
+            
+            // LINTER FIX: Pass a single track in an array since Queue API requires Track[]
+            onAddToQueue={(track) => queue.addToQueue([track])}
             onPlayNext={queue.playNext}
-            currentTrack={currentTrack}
+            
+            // LINTER FIX: safely cast to bypass optional vs required preview_url types
+            currentTrack={currentTrack as Track | null}
+            
             isPlaying={isPlaying}
-            isCustomPlaylist={activeTab === 'playlist' && activePlaylist?.platform === 'mmp'}
+            isCustomPlaylist={activeTab === 'playlist' && activePlaylistPlatform === 'mmp'}
             onRemoveFromPlaylist={handleRemoveFromPlaylist}
             onReorderTracks={handleReorderTracks}
             customPlaylists={customPlaylists}
@@ -341,11 +381,14 @@ export default function SearchPage() {
           onClose={() => setIsEditSidebarOpen(false)}
           onSave={(u) => {
             setCustomPlaylists(prev => prev.map(p => p.playlistId === u.playlistId ? u : p));
-            if (activePlaylist?.id === u.playlistId) setActivePlaylist(prev => prev ? { ...prev, name: u.name } : prev);
+            // LINTER FIX: setActivePlaylist expects (p: UnifiedPlaylist) => void, not a setState callback
+            if (activePlaylistId === u.playlistId && activePlaylist) {
+              setActivePlaylist({ ...activePlaylist, name: u.name });
+            }
             setIsEditSidebarOpen(false);
           }}
         />
       )}
-    </AppLayout>
+    </>
   );
 }
