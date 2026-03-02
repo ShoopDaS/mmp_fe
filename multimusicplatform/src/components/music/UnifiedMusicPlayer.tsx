@@ -214,27 +214,39 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
   // --- Controls & UI ---
   useEffect(() => { loopModeRef.current = queue.loopMode; }, [queue.loopMode]);
 
-  const togglePlay = () => adaptersMap.current[track.platform]?.togglePlay();
+  const togglePlay = () => {
+    adaptersMap.current[track.platform]?.togglePlay()?.catch((e: unknown) => {
+      console.warn('togglePlay failed:', e);
+    });
+  };
   useImperativeHandle(ref, () => ({ togglePlay }));
 
   useEffect(() => {
     if (onPlayerStateChange) onPlayerStateChange(playerState.isPlaying);
   }, [playerState.isPlaying, onPlayerStateChange]);
 
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => adaptersMap.current[track.platform]?.seek(Number(e.target.value));
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    adaptersMap.current[track.platform]?.seek(Number(e.target.value))?.catch((e: unknown) => {
+      console.warn('seek failed:', e);
+    });
+  };
   const handlePrevious = () => queue.previous();
   const handleNext = () => queue.next();
 
   // Volume Handlers
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    adaptersMap.current[track.platform]?.setVolume(Number(e.target.value));
+    adaptersMap.current[track.platform]?.setVolume(Number(e.target.value))?.catch((e: unknown) => {
+      console.warn('setVolume failed:', e);
+    });
   };
 
   const handleVolumeWheel = (e: React.WheelEvent) => {
     // Scrolling down (deltaY > 0) decreases volume, scrolling up increases volume
-    const delta = e.deltaY > 0 ? -0.05 : 0.05; 
+    const delta = e.deltaY > 0 ? -0.05 : 0.05;
     const newVol = Math.max(0, Math.min(1, playerState.volume + delta));
-    adaptersMap.current[track.platform]?.setVolume(newVol);
+    adaptersMap.current[track.platform]?.setVolume(newVol)?.catch((e: unknown) => {
+      console.warn('setVolume failed:', e);
+    });
   };
 
   const getLoopModeLabel = () => {
@@ -354,7 +366,9 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
           <button
             onClick={() => {
               const newVol = playerState.volume > 0 ? 0 : 1;
-              adaptersMap.current[track.platform]?.setVolume(newVol);
+              adaptersMap.current[track.platform]?.setVolume(newVol)?.catch((e: unknown) => {
+                console.warn('mute/unmute setVolume failed:', e);
+              });
             }}
             className={`p-2 rounded-full transition-all ${playerState.volume > 0 ? 'text-text-secondary hover:text-white' : 'text-red-400 hover:text-red-300'}`}
             title={playerState.volume > 0 ? 'Mute' : 'Unmute'}
