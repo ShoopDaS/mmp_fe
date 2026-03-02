@@ -263,7 +263,7 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
 
   if (readyPlatform !== track.platform && !error) {
     return (
-      <aside className="fixed right-0 top-0 bottom-0 w-80 bg-surface border-l border-white/5 flex flex-col items-center justify-center z-50">
+      <aside className="flex-1 flex flex-col items-center justify-center">
         <div className="text-center text-text-secondary animate-pulse">
           ⏳ Initializing {track.platform}...
         </div>
@@ -276,7 +276,7 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
   const errorMessage = error ? (youtubeUrl ? error.split('Open on YouTube:')[0].trim() : error) : null;
 
   return (
-    <aside className={`fixed right-0 top-0 bottom-0 w-80 bg-surface border-l ${error ? 'border-red-500/30' : 'border-white/5'} flex flex-col z-50 shadow-2xl`}>
+    <aside className={`flex-1 flex flex-col overflow-hidden ${error ? 'border-red-500/30' : ''}`}>
       
       {/* 1. Album Art & Glassmorphism Header */}
       <div className="relative w-full aspect-square shrink-0 overflow-hidden">

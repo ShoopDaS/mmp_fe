@@ -28,6 +28,7 @@ export default function LeftSidebar() {
   
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [importingPlaylistId, setImportingPlaylistId] = useState<string | null>(null);
 
   const connectedPlatforms: Array<'spotify' | 'youtube' | 'soundcloud'> = [];
   if (spotifyToken) connectedPlatforms.push('spotify');
@@ -70,32 +71,37 @@ export default function LeftSidebar() {
   }, [setCustomPlaylists]);
 
   const handleImportToPlaylist = useCallback(async (sourcePlaylist: UnifiedPlaylist, targetPlaylistId: string) => {
-    let tracks: any[] = [];
-    if (sourcePlaylist.platform === 'spotify') tracks = await fetchSpotifyPlaylistTracks(sourcePlaylist.id, spotifyToken || null);
-    else if (sourcePlaylist.platform === 'youtube') tracks = await fetchYouTubePlaylistTracks(sourcePlaylist.uri, youtubeToken || null);
-    else if (sourcePlaylist.platform === 'soundcloud') tracks = await fetchSoundCloudPlaylistTracks(sourcePlaylist.id, soundcloudToken || null);
+    setImportingPlaylistId(targetPlaylistId);
+    try {
+      let tracks: any[] = [];
+      if (sourcePlaylist.platform === 'spotify') tracks = await fetchSpotifyPlaylistTracks(sourcePlaylist.id, spotifyToken || null);
+      else if (sourcePlaylist.platform === 'youtube') tracks = await fetchYouTubePlaylistTracks(sourcePlaylist.uri, youtubeToken || null);
+      else if (sourcePlaylist.platform === 'soundcloud') tracks = await fetchSoundCloudPlaylistTracks(sourcePlaylist.id, soundcloudToken || null);
 
-    const existingIds = playlistTrackIds[targetPlaylistId] || new Set<string>();
-    const toAdd = tracks.filter(t => !existingIds.has(t.id));
-    const importedIds: string[] = [];
+      const existingIds = playlistTrackIds[targetPlaylistId] || new Set<string>();
+      const toAdd = tracks.filter(t => !existingIds.has(t.id));
+      const importedIds: string[] = [];
 
-    for (const track of toAdd) {
-      try {
-        await apiClient.addTrackToCustomPlaylist(targetPlaylistId, {
-          trackId: track.id, platform: track.platform, name: track.name, uri: track.uri,
-          artists: track.artists, albumName: track.album.name, albumImageUrl: track.album.images[0]?.url || '',
-          duration_ms: track.duration_ms, preview_url: track.preview_url || null,
-        });
-        importedIds.push(track.id);
-      } catch { /* skip failed tracks */ }
+      for (const track of toAdd) {
+        try {
+          await apiClient.addTrackToCustomPlaylist(targetPlaylistId, {
+            trackId: track.id, platform: track.platform, name: track.name, uri: track.uri,
+            artists: track.artists, albumName: track.album.name, albumImageUrl: track.album.images[0]?.url || '',
+            duration_ms: track.duration_ms, preview_url: track.preview_url || null,
+          });
+          importedIds.push(track.id);
+        } catch { /* skip failed tracks */ }
+      }
+
+      setPlaylistTrackIds(prev => {
+        const s = new Set(prev[targetPlaylistId] || []);
+        importedIds.forEach(id => s.add(id));
+        return { ...prev, [targetPlaylistId]: s };
+      });
+      setCustomPlaylists(prev => prev.map(p => p.playlistId === targetPlaylistId ? { ...p, trackCount: p.trackCount + importedIds.length } : p));
+    } finally {
+      setImportingPlaylistId(null);
     }
-
-    setPlaylistTrackIds(prev => {
-      const s = new Set(prev[targetPlaylistId] || []);
-      importedIds.forEach(id => s.add(id));
-      return { ...prev, [targetPlaylistId]: s };
-    });
-    setCustomPlaylists(prev => prev.map(p => p.playlistId === targetPlaylistId ? { ...p, trackCount: p.trackCount + importedIds.length } : p));
   }, [spotifyToken, youtubeToken, soundcloudToken, playlistTrackIds, setCustomPlaylists, setPlaylistTrackIds]);
 
   const NavItem = ({ href, label, icon }: { href: string, label: string, icon: string }) => {
@@ -159,7 +165,7 @@ export default function LeftSidebar() {
                {youtubeToken && <div className="w-2.5 h-2.5 rounded-full bg-youtube shadow-[0_0_8px_rgba(255,0,0,0.5)]" title="YouTube Active" />}
             </div>
          </div>
-         <button onClick={() => { logout(); window.location.href = '/'; }} className="w-full px-4 py-2 text-sm font-medium text-text-secondary hover:text-white hover:bg-surface-hover rounded-lg transition-colors flex items-center gap-3">
+         <button onClick={() => { logout(); router.push('/'); }} className="w-full px-4 py-2 text-sm font-medium text-text-secondary hover:text-white hover:bg-surface-hover rounded-lg transition-colors flex items-center gap-3">
             <span>🚪</span> Logout
          </button>
       </div>

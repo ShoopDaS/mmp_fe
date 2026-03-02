@@ -44,12 +44,13 @@ export default function SearchPage() {
   const queue = useQueue();
   const currentTrack = queue.getCurrentTrack();
   
-  const { 
+  const {
     spotifyToken, youtubeToken, soundcloudToken,
+    loadPlatformTokens,
     customPlaylists, setCustomPlaylists,
     activePlaylist, setActivePlaylist,
     playlistTrackIds, setPlaylistTrackIds,
-    triggerTogglePlay, isPlaying 
+    triggerTogglePlay, isPlaying
   } = useHub();
 
   const [tracks, setTracks] = useState<Track[]>([]);
@@ -156,6 +157,10 @@ export default function SearchPage() {
     if (!youtubeToken || !selectedPlatforms.youtube) return [];
     try {
       const res = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&q=${encodeURIComponent(query)}&maxResults=20`, { headers: { Authorization: `Bearer ${youtubeToken}` } });
+      if (res.status === 401) {
+        await loadPlatformTokens();
+        return [];
+      }
       const searchData = await res.json();
       const videoIds = (searchData.items || []).map((item: any) => item.id?.videoId).filter(Boolean);
       

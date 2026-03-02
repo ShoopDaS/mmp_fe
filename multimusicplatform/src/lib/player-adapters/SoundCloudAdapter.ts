@@ -49,6 +49,11 @@ export class SoundCloudAdapter implements IPlayerAdapter {
   private async initWidget(): Promise<boolean> {
     if (this.isDestroyed) return false;
 
+    // Reuse the existing widget if it's still alive
+    if (this.widget && this.state.canPlay) {
+      return true;
+    }
+
     const existingIframe = document.getElementById('sc-widget') as HTMLIFrameElement;
     if (existingIframe) {
       existingIframe.src = '';

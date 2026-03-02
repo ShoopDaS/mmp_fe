@@ -234,11 +234,14 @@ export class SpotifyAdapter implements IPlayerAdapter {
       this.state.isPlaying = false;
       this.notifyStateChange();
     }
+    this.stopProgressTracking();
   }
 
   async resume(): Promise<void> {
-    if (this.isPremium && this.player) await this.player.resume();
-    else if (this.audioElement) {
+    if (this.isPremium && this.player) {
+      await this.player.resume();
+      this.startProgressTracking();
+    } else if (this.audioElement) {
       await this.audioElement.play();
       this.state.isPlaying = true;
       this.notifyStateChange();
@@ -308,9 +311,25 @@ export class SpotifyAdapter implements IPlayerAdapter {
       this.audioElement.volume = this.state.volume;
     }
 
-    if (this.isPremium && this.player && this.volumeBeforeSuspend !== null) {
-      await this.player.setVolume(this.volumeBeforeSuspend);
-      this.volumeBeforeSuspend = null;
+    if (this.isPremium && this.player) {
+      // Validate the device is still reachable before restoring volume
+      try {
+        const state = await this.player.getCurrentState();
+        if (!state) {
+          console.warn('[Spotify] Device unreachable during restore, reconnecting...');
+          await this.player.disconnect();
+          const reconnected = await this.player.connect();
+          if (!reconnected) return false;
+        }
+      } catch {
+        console.warn('[Spotify] Device check failed during restore');
+        return false;
+      }
+
+      if (this.volumeBeforeSuspend !== null) {
+        await this.player.setVolume(this.volumeBeforeSuspend);
+        this.volumeBeforeSuspend = null;
+      }
     }
 
     return true;
@@ -368,13 +387,23 @@ export class SpotifyAdapter implements IPlayerAdapter {
 
   private startProgressTracking(): void {
     this.stopProgressTracking();
-    
-    this.progressInterval = setInterval(() => {
-      if (this.state.isPlaying && this.state.duration > 0) {
-        this.state.currentTime = Math.min(this.state.currentTime + 500, this.state.duration);
-        this.notifyStateChange();
+
+    this.progressInterval = setInterval(async () => {
+      if (this.isPremium && this.player) {
+        try {
+          const state = await this.player.getCurrentState();
+          if (state && state.duration > 0) {
+            this.state.currentTime = state.position;
+            this.state.duration = state.duration;
+            this.notifyStateChange();
+          }
+        } catch (err) {
+          // Swallow SDK streamer errors silently — the player will catch up
+          // automatically when the streamer reconnects.
+          console.warn('Spotify SDK internal sync skipped:', err);
+        }
       }
-    }, 500); 
+    }, 500);
   }
 
   private stopProgressTracking(): void {
