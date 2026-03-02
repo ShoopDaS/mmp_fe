@@ -95,28 +95,26 @@ export default function TrackList({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [openMenuId]);
 
-  const getPlatformColors = (platform: Track['platform'], isCurrentTrack: boolean) => {
-    if (isCurrentTrack) {
-      return 'bg-purple-600 border-l-4 border-purple-400';
-    }
+  const getActiveStyles = (isCurrentTrack: boolean) => {
+    return isCurrentTrack 
+      ? 'bg-surface-hover border-l-4 border-accent' 
+      : 'hover:bg-surface-hover border-l-4 border-transparent';
+  };
 
+  const getPlatformBadgeColor = (platform: Track['platform']) => {
     switch (platform) {
-      case 'spotify':
-        return 'bg-green-600/40 hover:bg-green-600/60 border-l-4 border-green-400';
-      case 'soundcloud':
-        return 'bg-orange-600/40 hover:bg-orange-600/60 border-l-4 border-orange-400';
-      case 'youtube':
-        return 'bg-red-600/40 hover:bg-red-600/60 border-l-4 border-red-400';
-      default:
-        return 'bg-white/10 hover:bg-white/20';
+      case 'spotify': return 'bg-spotify shadow-[0_0_8px_rgba(29,185,84,0.8)]';
+      case 'soundcloud': return 'bg-soundcloud shadow-[0_0_8px_rgba(255,85,0,0.8)]';
+      case 'youtube': return 'bg-youtube shadow-[0_0_8px_rgba(255,0,0,0.8)]';
+      default: return 'bg-gray-500';
     }
   };
 
   const platformMeta = (platform: 'spotify' | 'youtube' | 'soundcloud') => {
     switch (platform) {
-      case 'spotify': return { label: 'Spotify Playlists', icon: '🎵', iconColor: 'text-green-400' };
-      case 'youtube': return { label: 'YouTube Playlists', icon: '🎬', iconColor: 'text-red-400' };
-      case 'soundcloud': return { label: 'SoundCloud Playlists', icon: '🔊', iconColor: 'text-orange-400' };
+      case 'spotify': return { label: 'Spotify Playlists', icon: '🎵', iconColor: 'text-spotify' };
+      case 'youtube': return { label: 'YouTube Playlists', icon: '🎬', iconColor: 'text-youtube' };
+      case 'soundcloud': return { label: 'SoundCloud Playlists', icon: '🔊', iconColor: 'text-soundcloud' };
     }
   };
 
@@ -268,46 +266,44 @@ export default function TrackList({
               onDrop={canDrag ? (e) => handleDrop(e, index) : undefined}
               onDragEnd={canDrag ? handleDragEnd : undefined}
               className={`
-                flex items-center gap-4 p-4 rounded-lg transition-all duration-300 cursor-pointer relative group
-                ${getPlatformColors(track.platform, isCurrentTrack)}
+                flex items-center gap-4 p-3 rounded-xl transition-all duration-200 cursor-pointer relative group
+                ${getActiveStyles(isCurrentTrack)}
                 ${openMenuId === track.id ? 'z-20' : 'z-0'}
                 ${removingId === track.id ? 'opacity-0 translate-x-8 scale-95 pointer-events-none' : ''}
                 ${isDragging && removingId !== track.id ? 'opacity-40' : ''}
-                ${isDragOver ? 'ring-2 ring-purple-500' : ''}
-                backdrop-blur-sm
+                ${isDragOver ? 'ring-2 ring-accent' : ''}
               `}
               onClick={() => handleTrackClick(track)}
             >
               {/* Drag handle */}
               {canDrag && (
-                <span
-                  className="text-gray-600 group-hover:text-gray-400 cursor-grab active:cursor-grabbing shrink-0"
-                  title="Drag to reorder"
-                  onMouseDown={(e) => e.stopPropagation()}
-                >
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M7 2a2 2 0 10.001 4.001A2 2 0 007 2zm0 6a2 2 0 10.001 4.001A2 2 0 007 8zm0 6a2 2 0 10.001 4.001A2 2 0 007 14zm6-8a2 2 0 10-.001-4.001A2 2 0 0013 6zm0 2a2 2 0 10.001 4.001A2 2 0 0013 8zm0 6a2 2 0 10.001 4.001A2 2 0 0013 14z" />
-                  </svg>
+                <span className="text-text-secondary group-hover:text-white cursor-grab active:cursor-grabbing shrink-0" title="Drag to reorder" onMouseDown={(e) => e.stopPropagation()}>
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M7 2a2 2 0 10.001 4.001A2 2 0 007 2zm0 6a2 2 0 10.001 4.001A2 2 0 007 8zm0 6a2 2 0 10.001 4.001A2 2 0 007 14zm6-8a2 2 0 10-.001-4.001A2 2 0 0013 6zm0 2a2 2 0 10.001 4.001A2 2 0 0013 8zm0 6a2 2 0 10.001 4.001A2 2 0 0013 14z" /></svg>
                 </span>
               )}
 
               {/* Play/Pause indicator */}
-              <div className="text-2xl shrink-0">
-                {isCurrentTrack && isPlaying ? '⏸️' : '▶️'}
+              <div className="text-lg w-6 flex justify-center shrink-0 text-text-secondary group-hover:text-white transition-colors">
+                {isCurrentTrack ? (isPlaying ? '⏸️' : '▶️') : <span className="opacity-0 group-hover:opacity-100">▶️</span>}
               </div>
 
-              {/* Album art */}
-              {albumImage && (
-                <img src={albumImage} alt={track.album.name} className="w-16 h-16 rounded" />
-              )}
+              {/* Album art with Platform Badge */}
+              <div className="relative shrink-0">
+                {albumImage ? (
+                  <img src={albumImage} alt={track.album.name} className="w-12 h-12 rounded-md object-cover shadow-md" />
+                ) : (
+                  <div className="w-12 h-12 rounded-md bg-surface flex items-center justify-center text-xl shadow-md">🎵</div>
+                )}
+                {/* The glowing platform dot */}
+                <span className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-base ${getPlatformBadgeColor(track.platform)}`} />
+              </div>
 
               {/* Track info */}
-              <div className="flex-1 min-w-0">
-                <h3 className="font-semibold text-white truncate">{track.name}</h3>
-                <p className="text-sm text-gray-300 truncate">
-                  {track.artists.map(a => a.name).join(', ')}
+              <div className="flex-1 min-w-0 flex flex-col justify-center">
+                <h3 className={`font-medium truncate ${isCurrentTrack ? 'text-accent' : 'text-white'}`}>{track.name}</h3>
+                <p className="text-sm text-text-secondary truncate mt-0.5">
+                  {track.artists.map(a => a.name).join(', ')} <span className="mx-1">•</span> {track.album.name}
                 </p>
-                <p className="text-xs text-gray-400 truncate">{track.album.name}</p>
               </div>
 
               {/* Track menu (kebab) */}
@@ -319,7 +315,7 @@ export default function TrackList({
                     setOpenMenuId(closing ? null : track.id);
                     if (closing) setAddToPlaylistOpenId(null);
                   }}
-                  className="p-2 rounded-full bg-white/10 text-gray-300 hover:bg-white/20 hover:text-white transition-all"
+                  className="p-2 rounded-full bg-white/5 text-gray-300 hover:bg-white/20 hover:text-white transition-all opacity-0 group-hover:opacity-100"
                   title="More options"
                 >
                   <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
@@ -328,7 +324,7 @@ export default function TrackList({
                 </button>
 
                 {openMenuId === track.id && (
-                  <div className={`absolute right-0 top-full mt-1 bg-gray-800 border border-white/10 rounded-lg shadow-xl z-50 overflow-hidden transition-all ${isAddToPlaylistOpen ? 'w-60' : 'w-48'}`}>
+                  <div className={`absolute right-0 top-full mt-1 bg-surface-hover border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden transition-all ${isAddToPlaylistOpen ? 'w-60' : 'w-48'}`}>
 
                     {/* Queue actions */}
                     {onPlayNext && (
@@ -405,11 +401,11 @@ export default function TrackList({
                             {/* MMP playlists */}
                             {onAddToCustomPlaylist && (
                               <>
-                                <p className="sticky top-0 bg-gray-850 bg-gray-900/90 px-3 py-1.5 text-[10px] text-gray-500 uppercase tracking-wider font-semibold">
+                                <p className="sticky top-0 bg-surface-hover px-3 py-1.5 text-[10px] text-text-secondary uppercase tracking-wider font-semibold z-10">
                                   My Playlists
                                 </p>
                                 {!customPlaylists || customPlaylists.length === 0 ? (
-                                  <p className="px-3 py-1.5 text-xs text-gray-500 italic">No playlists yet</p>
+                                  <p className="px-3 py-1.5 text-xs text-text-secondary italic">No playlists yet</p>
                                 ) : (
                                   customPlaylists.map(pl => {
                                     const justAdded = addFeedback?.trackId === track.id && addFeedback.playlistId === pl.playlistId;
@@ -428,7 +424,7 @@ export default function TrackList({
                                             : 'text-gray-200 hover:bg-white/10 cursor-pointer'
                                         }`}
                                       >
-                                        <span className="text-purple-400 shrink-0">🎧</span>
+                                        <span className="text-accent shrink-0">🎧</span>
                                         <span className="truncate flex-1 text-left">{pl.name}</span>
                                         {(alreadyIn || justAdded) && (
                                           <svg className="w-3.5 h-3.5 text-green-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -445,13 +441,13 @@ export default function TrackList({
                             {/* Platform playlists (Spotify + YouTube only) */}
                             {onAddToPlatformPlaylist && track.platform !== 'soundcloud' && (
                               <>
-                                <p className="sticky top-0 bg-gray-900/90 px-3 py-1.5 text-[10px] text-gray-500 uppercase tracking-wider font-semibold border-t border-white/10">
+                                <p className="sticky top-0 bg-surface-hover px-3 py-1.5 text-[10px] text-text-secondary uppercase tracking-wider font-semibold border-t border-white/10 z-10">
                                   {meta.label}
                                 </p>
                                 {!platformPlaylists || platformPlaylists === 'loading' ? (
-                                  <p className="px-3 py-1.5 text-xs text-gray-500 italic">Loading…</p>
+                                  <p className="px-3 py-1.5 text-xs text-text-secondary italic">Loading…</p>
                                 ) : platformPlaylists.length === 0 ? (
-                                  <p className="px-3 py-1.5 text-xs text-gray-500 italic">No playlists found</p>
+                                  <p className="px-3 py-1.5 text-xs text-text-secondary italic">No playlists found</p>
                                 ) : (
                                   platformPlaylists.map(pl => {
                                     const justAdded = addFeedback?.trackId === track.id && addFeedback.playlistId === pl.id;
@@ -495,7 +491,7 @@ export default function TrackList({
               {isCustomPlaylist && onRemoveFromPlaylist && (
                 <button
                   onClick={(e) => handleRemoveClick(e, track)}
-                  className="shrink-0 p-2 rounded-full bg-white/10 text-gray-400 opacity-0 group-hover:opacity-100 hover:bg-red-600/30 hover:text-red-400 transition-all"
+                  className="shrink-0 p-2 rounded-full bg-white/5 text-text-secondary opacity-0 group-hover:opacity-100 hover:bg-red-500/20 hover:text-red-400 transition-all"
                   title="Remove from playlist"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

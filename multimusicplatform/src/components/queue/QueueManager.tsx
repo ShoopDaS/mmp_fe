@@ -11,17 +11,13 @@ interface QueueManagerProps {
 }
 
 export default function QueueManager({ customPlaylists }: QueueManagerProps) {
-  const [isOpen, setIsOpen] = useState(false);
   const {
     tracks,
     currentIndex,
-    loopMode,
     sourceLabel,
     jumpTo,
     removeFromQueue,
     moveTrack,
-    clearQueue,
-    cycleLoopMode,
   } = useQueue();
 
   // Drag-and-drop state
@@ -34,27 +30,17 @@ export default function QueueManager({ customPlaylists }: QueueManagerProps) {
   const [addFeedback, setAddFeedback] = useState<{ trackIndex: number; playlistId: string } | null>(null);
   const addMenuRef = useRef<HTMLDivElement>(null);
 
-  const currentTrack = currentIndex >= 0 && currentIndex < tracks.length ? tracks[currentIndex] : null;
   const upcomingTracks = currentIndex >= 0 ? tracks.slice(currentIndex + 1) : [];
 
   const getPlatformColor = (platform: string) => {
     switch (platform) {
-      case 'spotify': return 'bg-green-500';
-      case 'soundcloud': return 'bg-orange-500';
-      case 'youtube': return 'bg-red-500';
-      default: return 'bg-blue-500';
+      case 'spotify': return 'bg-spotify shadow-[0_0_8px_rgba(29,185,84,0.6)]';
+      case 'soundcloud': return 'bg-soundcloud shadow-[0_0_8px_rgba(255,85,0,0.6)]';
+      case 'youtube': return 'bg-youtube shadow-[0_0_8px_rgba(255,0,0,0.6)]';
+      default: return 'bg-accent shadow-[0_0_8px_rgba(99,102,241,0.6)]';
     }
   };
 
-  const loopModeLabel = () => {
-    switch (loopMode) {
-      case 'none': return 'Off';
-      case 'one': return '1';
-      case 'all': return 'All';
-    }
-  };
-
-  // --- Add to playlist handler ---
   const handleAddToPlaylist = async (track: Track, playlistId: string, trackIndex: number) => {
     try {
       await apiClient.addTrackToCustomPlaylist(playlistId, {
@@ -83,9 +69,7 @@ export default function QueueManager({ customPlaylists }: QueueManagerProps) {
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', String(visualIndex));
     requestAnimationFrame(() => {
-      if (dragNodeRef.current) {
-        dragNodeRef.current.style.opacity = '0.4';
-      }
+      if (dragNodeRef.current) dragNodeRef.current.style.opacity = '0.4';
     });
   }, []);
 
@@ -101,9 +85,7 @@ export default function QueueManager({ customPlaylists }: QueueManagerProps) {
   }, []);
 
   const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    if (e.currentTarget === e.target) {
-      setDragOverVisualIndex(null);
-    }
+    if (e.currentTarget === e.target) setDragOverVisualIndex(null);
   }, []);
 
   const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>, toVisualIndex: number) => {
@@ -118,222 +100,125 @@ export default function QueueManager({ customPlaylists }: QueueManagerProps) {
   }, [dragVisualIndex, currentIndex, moveTrack]);
 
   const handleDragEnd = useCallback(() => {
-    if (dragNodeRef.current) {
-      dragNodeRef.current.style.opacity = '1';
-    }
+    if (dragNodeRef.current) dragNodeRef.current.style.opacity = '1';
     setDragVisualIndex(null);
     setDragOverVisualIndex(null);
     dragNodeRef.current = null;
   }, []);
 
-  if (tracks.length === 0) return null;
+  if (upcomingTracks.length === 0) return null;
 
   return (
-    <>
-      {/* Toggle Button */}
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="p-2 bg-gray-700 rounded-full hover:bg-gray-600 transition-colors relative"
-        title="View Queue"
-      >
-        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h10" />
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 18l2 2 4-4" />
-        </svg>
-        {upcomingTracks.length > 0 && (
-          <span className="absolute -top-1 -right-1 w-4 h-4 bg-purple-500 text-white text-[10px] rounded-full flex items-center justify-center">
-            {upcomingTracks.length > 99 ? '99+' : upcomingTracks.length}
-          </span>
+    <div className="flex-1 flex flex-col min-h-0 w-full">
+      {/* Header */}
+      <div className="px-6 py-4 flex flex-col shrink-0 border-t border-white/5">
+        <h3 className="text-white font-semibold text-sm">Seamless Queue</h3>
+        {sourceLabel && (
+          <p className="text-text-secondary text-xs truncate mt-0.5">From: {sourceLabel}</p>
         )}
-      </button>
+      </div>
 
-      {/* Queue Panel */}
-      {isOpen && (
-        <div className="absolute bottom-full right-0 mb-2 w-80 max-h-96 bg-gray-900 border border-white/10 rounded-xl shadow-2xl overflow-hidden flex flex-col z-[60]">
-          {/* Header */}
-          <div className="p-3 border-b border-white/10 flex items-center justify-between shrink-0">
-            <div>
-              <h3 className="text-white font-semibold text-sm">Queue</h3>
-              {sourceLabel && (
-                <p className="text-gray-400 text-xs truncate max-w-[180px]">From: {sourceLabel}</p>
+      {/* List (drag-and-drop enabled) */}
+      <div className="flex-1 overflow-y-auto relative px-2 pb-6">
+        {/* The Seamless Connection Line */}
+        <div className="absolute left-[26px] top-6 bottom-6 w-[2px] bg-gradient-to-b from-accent via-surface-hover to-surface-hover z-0" />
+
+        {upcomingTracks.map((track, i) => {
+          const queueIndex = currentIndex + 1 + i;
+          const isDragging = dragVisualIndex === i;
+          const isDragOver = dragOverVisualIndex === i;
+          const showAddDropdown = addToPlaylistTrackIndex === i;
+          const justAdded = addFeedback?.trackIndex === i;
+
+          return (
+            <div
+              key={`${track.id}-${queueIndex}`}
+              draggable
+              onDragStart={(e) => handleDragStart(e, i)}
+              onDragOver={(e) => handleDragOver(e, i)}
+              onDragEnter={(e) => handleDragEnter(e, i)}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, i)}
+              onDragEnd={handleDragEnd}
+              className={`
+                flex items-center gap-3 px-3 py-2 group cursor-pointer select-none transition-colors relative z-10 rounded-lg
+                ${isDragging ? 'opacity-40' : 'hover:bg-white/5'}
+                ${isDragOver && !isDragging ? 'border-t-2 border-accent' : 'border-t-2 border-transparent'}
+              `}
+              onClick={() => jumpTo(queueIndex)}
+            >
+              {/* Platform Badge (on the line) */}
+              <span className={`w-2.5 h-2.5 rounded-full shrink-0 outline outline-4 outline-surface ${getPlatformColor(track.platform)}`} />
+
+              {/* Cover Art */}
+              {track.album.images[0]?.url && (
+                <img src={track.album.images[0].url} alt="" className="w-8 h-8 rounded shrink-0 object-cover" />
               )}
-            </div>
-            <div className="flex items-center gap-2">
-              {/* Loop mode toggle */}
-              <button
-                onClick={cycleLoopMode}
-                className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                  loopMode !== 'none'
-                    ? 'bg-purple-600 text-white'
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                }`}
-                title={`Loop: ${loopModeLabel()}`}
-              >
-                <span className="flex items-center gap-1">
-                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" />
-                  </svg>
-                  {loopModeLabel()}
-                </span>
-              </button>
-              {/* Clear queue */}
-              <button
-                onClick={() => { clearQueue(); setIsOpen(false); }}
-                className="px-2 py-1 bg-gray-700 hover:bg-red-600 text-gray-300 hover:text-white rounded text-xs transition-colors"
-                title="Clear Queue"
-              >
-                Clear
-              </button>
-            </div>
-          </div>
-
-          {/* Now Playing */}
-          {currentTrack && (
-            <div className="p-3 bg-purple-900/30 border-b border-white/10 shrink-0">
-              <p className="text-purple-300 text-[10px] uppercase tracking-wider font-semibold mb-1">Now Playing</p>
-              <div className="flex items-center gap-2">
-                {currentTrack.album.images[0]?.url && (
-                  <img src={currentTrack.album.images[0].url} alt="" className="w-8 h-8 rounded" />
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-white text-sm font-medium truncate">{currentTrack.name}</p>
-                  <p className="text-gray-400 text-xs truncate">{currentTrack.artists.map(a => a.name).join(', ')}</p>
-                </div>
-                <span className={`w-2 h-2 rounded-full shrink-0 ${getPlatformColor(currentTrack.platform)}`} />
+              
+              <div className="flex-1 min-w-0">
+                <p className="text-white text-sm truncate">{track.name}</p>
+                <p className="text-text-secondary text-[11px] truncate">{track.artists.map(a => a.name).join(', ')}</p>
               </div>
-            </div>
-          )}
 
-          {/* Upcoming Tracks (drag-and-drop enabled) */}
-          <div className="flex-1 overflow-y-auto">
-            {upcomingTracks.length === 0 ? (
-              <div className="p-4 text-center text-gray-500 text-sm">No upcoming tracks</div>
-            ) : (
-              <>
-                <p className="px-3 pt-2 pb-1 text-gray-500 text-[10px] uppercase tracking-wider font-semibold">
-                  Up Next ({upcomingTracks.length}) &middot; Drag to reorder
-                </p>
-                {upcomingTracks.map((track, i) => {
-                  const queueIndex = currentIndex + 1 + i;
-                  const isDragging = dragVisualIndex === i;
-                  const isDragOver = dragOverVisualIndex === i;
-                  const showAddDropdown = addToPlaylistTrackIndex === i;
-                  const justAdded = addFeedback?.trackIndex === i;
+              {/* Add to playlist button */}
+              <div className="relative shrink-0" ref={showAddDropdown ? addMenuRef : undefined}>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setAddToPlaylistTrackIndex(showAddDropdown ? null : i);
+                  }}
+                  className={`
+                    p-1.5 rounded-md transition-opacity
+                    ${justAdded ? 'text-green-400 opacity-100' : 'opacity-0 group-hover:opacity-100 text-text-secondary hover:text-white hover:bg-white/10'}
+                  `}
+                  title="Add to playlist"
+                >
+                  {justAdded ? (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                  )}
+                </button>
 
-                  return (
-                    <div
-                      key={`${track.id}-${queueIndex}`}
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, i)}
-                      onDragOver={(e) => handleDragOver(e, i)}
-                      onDragEnter={(e) => handleDragEnter(e, i)}
-                      onDragLeave={handleDragLeave}
-                      onDrop={(e) => handleDrop(e, i)}
-                      onDragEnd={handleDragEnd}
-                      className={`
-                        flex items-center gap-2 px-3 py-2 group cursor-pointer select-none transition-colors relative
-                        ${isDragging ? 'opacity-40' : 'hover:bg-white/5'}
-                        ${isDragOver && !isDragging ? 'border-t-2 border-purple-500' : 'border-t-2 border-transparent'}
-                      `}
-                      onClick={() => jumpTo(queueIndex)}
-                    >
-                      {/* Drag handle */}
-                      <span
-                        className="text-gray-600 group-hover:text-gray-400 cursor-grab active:cursor-grabbing shrink-0"
-                        title="Drag to reorder"
-                        onMouseDown={(e) => e.stopPropagation()}
-                      >
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M7 2a2 2 0 10.001 4.001A2 2 0 007 2zm0 6a2 2 0 10.001 4.001A2 2 0 007 8zm0 6a2 2 0 10.001 4.001A2 2 0 007 14zm6-8a2 2 0 10-.001-4.001A2 2 0 0013 6zm0 2a2 2 0 10.001 4.001A2 2 0 0013 8zm0 6a2 2 0 10.001 4.001A2 2 0 0013 14z" />
-                        </svg>
-                      </span>
-
-                      <span className="text-gray-500 text-xs w-5 text-right shrink-0">{i + 1}</span>
-                      {track.album.images[0]?.url && (
-                        <img src={track.album.images[0].url} alt="" className="w-8 h-8 rounded" />
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-white text-sm truncate">{track.name}</p>
-                        <p className="text-gray-400 text-[11px] truncate">{track.artists.map(a => a.name).join(', ')}</p>
-                      </div>
-                      <span className={`w-2 h-2 rounded-full shrink-0 ${getPlatformColor(track.platform)}`} />
-
-                      {/* Add to playlist button */}
-                      <div className="relative" ref={showAddDropdown ? addMenuRef : undefined}>
+                {/* Playlist sub-dropdown */}
+                {showAddDropdown && (
+                  <div className="absolute right-0 bottom-full mb-2 w-48 bg-surface-hover border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden">
+                    <p className="px-3 py-2 text-[10px] text-text-secondary uppercase tracking-wider font-semibold border-b border-white/5">
+                      Add to playlist
+                    </p>
+                    {customPlaylists.length === 0 ? (
+                      <p className="px-3 py-3 text-xs text-text-secondary text-center">No playlists yet</p>
+                    ) : (
+                      customPlaylists.map((pl) => (
                         <button
+                          key={pl.playlistId}
                           onClick={(e) => {
                             e.stopPropagation();
-                            setAddToPlaylistTrackIndex(showAddDropdown ? null : i);
+                            handleAddToPlaylist(track, pl.playlistId, i);
                           }}
-                          className={`
-                            p-1 rounded transition-opacity
-                            ${justAdded
-                              ? 'text-green-400 opacity-100'
-                              : 'opacity-0 group-hover:opacity-100 text-gray-400 hover:text-purple-400'
-                            }
-                          `}
-                          title="Add to playlist"
+                          className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors"
                         >
-                          {justAdded ? (
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
-                          ) : (
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                            </svg>
-                          )}
+                          <span className="text-accent text-xs">🎧</span>
+                          <span className="truncate text-left flex-1">{pl.name}</span>
                         </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
 
-                        {/* Playlist sub-dropdown */}
-                        {showAddDropdown && (
-                          <div className="absolute right-0 bottom-full mb-1 w-48 bg-gray-800 border border-white/10 rounded-lg shadow-xl z-50 overflow-hidden">
-                            <p className="px-3 py-1.5 text-[10px] text-gray-500 uppercase tracking-wider font-semibold border-b border-white/10">
-                              Add to playlist
-                            </p>
-                            {customPlaylists.length === 0 ? (
-                              <p className="px-3 py-2 text-xs text-gray-500">No playlists yet</p>
-                            ) : (
-                              customPlaylists.map((pl) => (
-                                <button
-                                  key={pl.playlistId}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleAddToPlaylist(track, pl.playlistId, i);
-                                  }}
-                                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-200 hover:bg-white/10 transition-colors"
-                                >
-                                  <span className="text-purple-400 text-xs">🎧</span>
-                                  <span className="truncate">{pl.name}</span>
-                                  <span className="text-gray-500 text-xs ml-auto">{pl.trackCount}</span>
-                                </button>
-                              ))
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Remove button */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removeFromQueue(queueIndex);
-                        }}
-                        className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-400 transition-opacity p-1"
-                        title="Remove"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </div>
-                  );
-                })}
-              </>
-            )}
-          </div>
-        </div>
-      )}
-    </>
+              {/* Remove button */}
+              <button
+                onClick={(e) => { e.stopPropagation(); removeFromQueue(queueIndex); }}
+                className="opacity-0 group-hover:opacity-100 text-text-secondary hover:text-red-400 transition-opacity p-1.5 rounded-md hover:bg-red-500/10 shrink-0"
+                title="Remove"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }

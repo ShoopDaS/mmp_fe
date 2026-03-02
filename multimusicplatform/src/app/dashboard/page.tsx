@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/lib/api';
-import Header from '@/components/layout/Header';
+import AppLayout from '@/components/layout/AppLayout';
 import PlatformCard from '@/components/dashboard/PlatformCard';
 import ConnectButton from '@/components/dashboard/ConnectButton';
 
@@ -43,25 +43,25 @@ export default function DashboardPage() {
     if (spotify === 'connected') {
       setMessage({ type: 'success', text: 'Spotify connected successfully!' });
       router.replace('/dashboard');
-      } else if (youtube === 'connected') {
-        setMessage({ type: 'success', text: 'YouTube Music connected successfully!' });
-        router.replace('/dashboard');
-      } else if (soundcloud === 'connected') {  // Add this
-        setMessage({ type: 'success', text: 'SoundCloud connected successfully!' });
-        router.replace('/dashboard');
-      } else if (error) {
-        // Handle error messages
-        let errorMsg = 'Connection failed';
-        if (error.startsWith('youtube_')) {
-          errorMsg = `YouTube Music: ${error.replace('youtube_', '')}`;
-        } else if (error.startsWith('soundcloud_')) {  // Add this
-          errorMsg = `SoundCloud: ${error.replace('soundcloud_', '')}`;
-        } else {
-          errorMsg = error;
-        }
-        setMessage({ type: 'error', text: errorMsg });
-        router.replace('/dashboard');
+    } else if (youtube === 'connected') {
+      setMessage({ type: 'success', text: 'YouTube Music connected successfully!' });
+      router.replace('/dashboard');
+    } else if (soundcloud === 'connected') {  
+      setMessage({ type: 'success', text: 'SoundCloud connected successfully!' });
+      router.replace('/dashboard');
+    } else if (error) {
+      // Handle error messages
+      let errorMsg = 'Connection failed';
+      if (error.startsWith('youtube_')) {
+        errorMsg = `YouTube Music: ${error.replace('youtube_', '')}`;
+      } else if (error.startsWith('soundcloud_')) {  
+        errorMsg = `SoundCloud: ${error.replace('soundcloud_', '')}`;
+      } else {
+        errorMsg = error;
       }
+      setMessage({ type: 'error', text: errorMsg });
+      router.replace('/dashboard');
+    }
   }, [authLoading, isAuthenticated, router, searchParams]);
 
   const loadPlatforms = async () => {
@@ -88,7 +88,7 @@ export default function DashboardPage() {
 
   if (authLoading || !user) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-base text-text-primary">
         <div className="text-xl">Loading...</div>
       </div>
     );
@@ -99,26 +99,24 @@ export default function DashboardPage() {
   const soundcloudConnected = platforms.some(p => p.platform === 'soundcloud'); 
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-black">
-      <Header />
-      
-      <main className="max-w-6xl mx-auto px-4 py-8">
+    <AppLayout>
+      <div className="max-w-6xl mx-auto px-8 py-10">
         {/* Welcome section */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-white mb-2">
+        <div className="mb-10">
+          <h1 className="text-4xl font-bold text-white mb-2 tracking-tight">
             Welcome, {user.displayName}!
           </h1>
-          <p className="text-gray-300">
+          <p className="text-text-secondary">
             {user.email}
           </p>
         </div>
 
         {/* Messages */}
         {message && (
-          <div className={`mb-6 px-4 py-3 rounded-lg ${
+          <div className={`mb-8 px-4 py-3 rounded-lg ${
             message.type === 'success' 
-              ? 'bg-green-500/20 border border-green-500 text-green-100'
-              : 'bg-red-500/20 border border-red-500 text-red-100'
+              ? 'bg-green-500/10 border border-green-500/30 text-green-400'
+              : 'bg-red-500/10 border border-red-500/30 text-red-400'
           }`}>
             {message.text}
           </div>
@@ -126,9 +124,9 @@ export default function DashboardPage() {
 
         {/* Connected Platforms */}
         {platforms.length > 0 && (
-          <div className="mb-8">
-            <h2 className="text-2xl font-semibold text-white mb-4">Connected Platforms</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="mb-12">
+            <h2 className="text-xl font-semibold text-white mb-6">Connected Platforms</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {platforms.map((platform) => (
                 <PlatformCard
                   key={platform.platform}
@@ -142,10 +140,10 @@ export default function DashboardPage() {
 
         {/* Connect New Platform */}
         <div>
-          <h2 className="text-2xl font-semibold text-white mb-4">
+          <h2 className="text-xl font-semibold text-white mb-6">
             {platforms.length === 0 ? 'Connect Your Music' : 'Add More Platforms'}
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <ConnectButton 
               platform="spotify" 
               connected={spotifyConnected}
@@ -175,7 +173,7 @@ export default function DashboardPage() {
             </button>
           </div>
         )}
-      </main>
-    </div>
+      </div>
+    </AppLayout>
   );
 }

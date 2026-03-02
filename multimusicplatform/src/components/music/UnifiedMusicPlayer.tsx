@@ -269,128 +269,94 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
 
   if (readyPlatform !== track.platform && !error) {
     return (
-      <div className="fixed bottom-0 left-0 right-0 bg-black/90 backdrop-blur-lg border-t border-white/10 p-4">
-        <div className="max-w-6xl mx-auto text-center text-gray-400">
-          ⏳ Initializing player...
+      <aside className="fixed right-0 top-0 bottom-0 w-80 bg-surface border-l border-white/5 flex flex-col items-center justify-center z-50">
+        <div className="text-center text-text-secondary animate-pulse">
+          ⏳ Initializing {track.platform}...
         </div>
-      </div>
+      </aside>
     );
   }
 
-  // Extract YouTube deep-link if present in the error (YouTube adapter embeds it)
   const youtubeUrlMatch = error?.match(/https:\/\/www\.youtube\.com\/watch\?v=([a-zA-Z0-9_-]+)/);
   const youtubeUrl = youtubeUrlMatch ? youtubeUrlMatch[0] : null;
-  const errorMessage = error
-    ? (youtubeUrl ? error.split('Open on YouTube:')[0].trim() : error)
-    : null;
+  const errorMessage = error ? (youtubeUrl ? error.split('Open on YouTube:')[0].trim() : error) : null;
 
   return (
-    <div className={`fixed bottom-0 left-0 right-0 bg-black/90 backdrop-blur-lg border-t ${error ? 'border-red-500/30' : 'border-white/10'} p-4 z-50`}>
-      <div className="max-w-6xl mx-auto">
-        <div className="mb-3">
-          <input
-            type="range" min="0" max={playerState.duration || 1} value={playerState.currentTime} onChange={handleSeek}
-            className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-white"
-            style={{ background: `linear-gradient(to right, white 0%, white ${(playerState.currentTime / playerState.duration) * 100}%, rgb(55, 65, 81) ${(playerState.currentTime / playerState.duration) * 100}%, rgb(55, 65, 81) 100%)` }}
-          />
-          <div className="flex justify-between text-xs text-gray-400 mt-1">
-            <span>{formatTime(playerState.currentTime)}</span>
-            <span>{formatTime(playerState.duration)}</span>
-          </div>
-        </div>
+    <aside className={`fixed right-0 top-0 bottom-0 w-80 bg-surface border-l ${error ? 'border-red-500/30' : 'border-white/5'} flex flex-col z-50 shadow-2xl`}>
+      
+      {/* 1. Album Art & Glassmorphism Header */}
+      <div className="relative w-full aspect-square shrink-0 overflow-hidden">
+         {/* Background blurred image */}
+         <div className="absolute inset-0 bg-cover bg-center opacity-40 blur-3xl scale-110" style={{ backgroundImage: `url(${track.album.images[0]?.url})` }} />
+         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-surface/50 to-surface" />
+         
+         {/* Actual Image */}
+         <div className="absolute inset-8 rounded-2xl overflow-hidden shadow-2xl shadow-black/50 border border-white/10">
+           <img src={track.album.images[0]?.url} alt={track.album.name} className={`w-full h-full object-cover ${error ? 'opacity-50 grayscale' : ''}`} />
+           {/* Platform Badge Overlay */}
+           <div className={`absolute bottom-2 right-2 px-2 py-1 rounded-md text-[10px] font-bold text-white shadow-lg uppercase tracking-wider ${getPlatformColor()}`}>
+             {track.platform}
+           </div>
+         </div>
+      </div>
 
-        <div className="flex items-center gap-4">
-          <img src={track.album.images[0]?.url} alt={track.album.name} className={`w-16 h-16 rounded shadow-lg ${error ? 'opacity-50' : ''}`} />
-          <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-white truncate">{track.name}</h3>
-            {errorMessage ? (
-              <div className="flex items-center gap-2 mt-0.5">
-                <p className="text-sm text-red-400 truncate">⚠️ {errorMessage}</p>
-                {autoSkipCountdown !== null && (
-                  <span className="shrink-0 text-xs text-gray-500">skipping in {autoSkipCountdown}s</span>
-                )}
-                {youtubeUrl && (
-                  <a href={youtubeUrl} target="_blank" rel="noopener noreferrer" className="shrink-0 text-xs px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white rounded transition-colors">
-                    Open on YouTube
-                  </a>
-                )}
-              </div>
-            ) : (
-              <p className="text-sm text-gray-300 truncate">{track.artists.map(a => a.name).join(', ')}</p>
-            )}
-            <div className="flex items-center gap-2 mt-1">
-              <span className={`text-xs px-2 py-0.5 rounded ${getPlatformColor()} text-white`}>{track.platform.toUpperCase()}</span>
-              {track.platform === 'spotify' && !error && (
-                <span className="text-xs text-gray-400">{playerState.duration > 30000 ? '🎵 Premium' : '⏱️ Preview'}</span>
-              )}
-            </div>
-          </div>
+      {/* 2. Track Info */}
+      <div className="px-6 mt-2 text-center shrink-0 relative z-10">
+         <h3 className="font-bold text-white text-xl truncate">{track.name}</h3>
+         {errorMessage ? (
+           <div className="flex flex-col items-center gap-1 mt-1">
+             <p className="text-xs text-red-400 line-clamp-2">⚠️ {errorMessage}</p>
+             {autoSkipCountdown !== null && <span className="text-[10px] text-text-secondary">Skipping in {autoSkipCountdown}s</span>}
+             {youtubeUrl && <a href={youtubeUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-red-400 underline mt-1">Open on YouTube</a>}
+           </div>
+         ) : (
+           <p className="text-sm text-text-secondary truncate mt-1">
+             {track.artists.map(a => a.name).join(', ')}
+           </p>
+         )}
+      </div>
 
-          <div className="flex items-center gap-3">
-            {/* Shuffle button */}
-            <button
-              onClick={queue.toggleShuffle}
-              className={`p-2 rounded-full transition-all ${queue.shuffle ? 'bg-white text-black' : 'bg-gray-700 text-white hover:bg-gray-600'}`}
-              title={`Shuffle: ${queue.shuffle ? 'On' : 'Off'}`}
-            >
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z" /></svg>
-            </button>
-
-            {/* Loop mode button */}
-            <button
-              onClick={queue.cycleLoopMode}
-              className={`p-2 rounded-full transition-all relative ${queue.loopMode !== 'none' ? 'bg-white text-black' : 'bg-gray-700 text-white hover:bg-gray-600'}`}
-              title={`Loop: ${queue.loopMode === 'none' ? 'Off' : queue.loopMode === 'one' ? 'One' : 'All'}`}
-            >
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" /></svg>
-              {getLoopModeLabel() && (
-                <span className="absolute -top-1 -right-1 text-[9px] font-bold bg-purple-500 text-white rounded-full w-3.5 h-3.5 flex items-center justify-center">
-                  {getLoopModeLabel()}
-                </span>
-              )}
-            </button>
-
-            {/* Previous */}
-            <button onClick={handlePrevious} className="p-2 bg-gray-700 rounded-full hover:bg-gray-600 transition-colors" title="Previous">
-              <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M8.445 14.832A1 1 0 0010 14v-2.798l5.445 3.63A1 1 0 0017 14V6a1 1 0 00-1.555-.832L10 8.798V6a1 1 0 00-1.555-.832l-6 4a1 1 0 000 1.664l6 4z" /></svg>
-            </button>
-
-            {/* Play/Pause — grayed out and disabled when the current track has an error */}
-            <button
-              onClick={error ? undefined : togglePlay}
-              disabled={!!error}
-              className={`w-12 h-12 rounded-full flex items-center justify-center transition-transform shadow-lg ${error ? 'bg-gray-600 cursor-not-allowed opacity-50' : `${getPlatformColor()} hover:scale-110`}`}
-              title={error ? 'Track unavailable' : undefined}
-            >
-              <span className="text-2xl text-white">{playerState.isPlaying ? '⏸️' : '▶️'}</span>
-            </button>
-
-            {/* Next */}
-            <button onClick={handleNext} className="p-2 bg-gray-700 rounded-full hover:bg-gray-600 transition-colors" title="Next">
-              <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M11.555 5.168A1 1 0 0010 6v2.798L4.555 5.168A1 1 0 003 6v8a1 1 0 001.555.832L10 11.202V14a1 1 0 001.555.832l6-4a1 1 0 000-1.664l-6-4z" /></svg>
-            </button>
-
-            {/* Volume */}
-            <div className="relative">
-              <button onClick={() => setShowVolume(!showVolume)} className="p-2 bg-gray-700 rounded-full hover:bg-gray-600 transition-colors">
-                <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z" clipRule="evenodd" /></svg>
-              </button>
-              {showVolume && (
-                <div className="absolute bottom-full right-0 mb-2 p-2 bg-gray-800 rounded-lg shadow-xl">
-                  <input type="range" min="0" max="1" step="0.01" value={playerState.volume} onChange={handleVolumeChange} className="w-24 h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-white"/>
-                  <div className="text-xs text-center text-gray-300 mt-1">{Math.round(playerState.volume * 100)}%</div>
-                </div>
-              )}
-            </div>
-
-            {/* Queue Manager */}
-            <div className="relative">
-              <QueueManager customPlaylists={customPlaylists} />
-            </div>
-          </div>
+      {/* 3. Progress Bar */}
+      <div className="px-8 mt-6 shrink-0 relative z-10">
+        <input
+          type="range" min="0" max={playerState.duration || 1} value={playerState.currentTime} onChange={handleSeek}
+          className="w-full h-1 bg-surface-hover rounded-lg appearance-none cursor-pointer accent-white hover:h-1.5 transition-all"
+          style={{ background: `linear-gradient(to right, white 0%, white ${(playerState.currentTime / playerState.duration) * 100}%, var(--surface-hover) ${(playerState.currentTime / playerState.duration) * 100}%, var(--surface-hover) 100%)` }}
+        />
+        <div className="flex justify-between text-[10px] text-text-secondary font-medium mt-2">
+          <span>{formatTime(playerState.currentTime)}</span>
+          <span>{formatTime(playerState.duration)}</span>
         </div>
       </div>
-    </div>
+
+      {/* 4. Playback Controls */}
+      <div className="px-6 mt-4 mb-2 flex items-center justify-between shrink-0 relative z-10">
+        <button onClick={queue.toggleShuffle} className={`p-2 rounded-full transition-all ${queue.shuffle ? 'text-accent' : 'text-text-secondary hover:text-white'}`}>
+          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z" /></svg>
+        </button>
+
+        <button onClick={handlePrevious} className="p-2 text-white hover:text-accent transition-colors">
+          <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M8.445 14.832A1 1 0 0010 14v-2.798l5.445 3.63A1 1 0 0017 14V6a1 1 0 00-1.555-.832L10 8.798V6a1 1 0 00-1.555-.832l-6 4a1 1 0 000 1.664l6 4z" /></svg>
+        </button>
+
+        <button onClick={error ? undefined : togglePlay} disabled={!!error} className={`w-14 h-14 rounded-full flex items-center justify-center transition-transform shadow-lg ${error ? 'bg-surface-hover cursor-not-allowed opacity-50' : `${getPlatformColor().split(' ')[0]} hover:scale-105`}`}>
+          <span className="text-2xl text-white ml-1">{playerState.isPlaying ? '⏸️' : '▶️'}</span>
+        </button>
+
+        <button onClick={handleNext} className="p-2 text-white hover:text-accent transition-colors">
+          <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M11.555 5.168A1 1 0 0010 6v2.798L4.555 5.168A1 1 0 003 6v8a1 1 0 001.555.832L10 11.202V14a1 1 0 001.555.832l6-4a1 1 0 000-1.664l-6-4z" /></svg>
+        </button>
+
+        <button onClick={queue.cycleLoopMode} className={`p-2 rounded-full transition-all relative ${queue.loopMode !== 'none' ? 'text-accent' : 'text-text-secondary hover:text-white'}`}>
+          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" /></svg>
+          {getLoopModeLabel() && <span className="absolute -top-1 -right-1 text-[9px] font-bold bg-accent text-white rounded-full w-3.5 h-3.5 flex items-center justify-center">{getLoopModeLabel()}</span>}
+        </button>
+      </div>
+
+      {/* 5. Inline Seamless Queue */}
+      <QueueManager customPlaylists={customPlaylists} />
+      
+    </aside>
   );
 });
 
