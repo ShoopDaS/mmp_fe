@@ -31,30 +31,39 @@ export class SpotifyAdapter implements IPlayerAdapter {
   private playAbortController: AbortController | null = null;
   private playSequence = 0;
   private volumeBeforeSuspend: number | null = null;
+  private destroyed = false;
 
   async initialize(token: string): Promise<boolean> {
     this.token = token;
+    this.destroyed = false;
     console.log('🎵 [Spotify] Initializing...');
 
     return new Promise((resolve) => {
-      if (!window.Spotify) {
+      if (window.Spotify) {
+        // SDK already loaded, just create the player
+        this.initPlayer().then(resolve);
+        return;
+      }
+
+      // SDK not ready yet — set the global callback (latest adapter wins)
+      window.onSpotifyWebPlaybackSDKReady = () => {
+        if (this.destroyed) { resolve(false); return; }
+        console.log('✅ [Spotify] SDK Ready');
+        this.initPlayer().then(resolve);
+      };
+
+      // Only inject the script tag once (survives React re-mounts)
+      if (!document.querySelector('script[src="https://sdk.scdn.co/spotify-player.js"]')) {
         const script = document.createElement('script');
         script.src = 'https://sdk.scdn.co/spotify-player.js';
         script.async = true;
-
-        window.onSpotifyWebPlaybackSDKReady = () => {
-          console.log('✅ [Spotify] SDK Ready');
-          this.initPlayer().then(resolve);
-        };
-
         document.body.appendChild(script);
-      } else {
-        this.initPlayer().then(resolve);
       }
     });
   }
 
   private async initPlayer(): Promise<boolean> {
+    if (this.destroyed) return false;
     console.log('🎮 [Spotify] Initializing Player...');
 
     const player = new window.Spotify.Player({
@@ -66,6 +75,7 @@ export class SpotifyAdapter implements IPlayerAdapter {
     this.player = player;
 
     player.addListener('ready', ({ device_id }: any) => {
+      if (this.destroyed) return;
       console.log('✅ [Spotify] Premium Ready! Device:', device_id);
       this.deviceId = device_id;
       this.isPremium = true;
@@ -79,7 +89,7 @@ export class SpotifyAdapter implements IPlayerAdapter {
 
     // Track state changes organically (doesn't poll)
     player.addListener('player_state_changed', (spotifyState: any) => {
-      if (!spotifyState) return;
+      if (!spotifyState || this.destroyed) return;
 
       const wasPlaying = this.state.isPlaying;
       this.state.isPlaying = !spotifyState.paused;
@@ -104,26 +114,36 @@ export class SpotifyAdapter implements IPlayerAdapter {
     });
 
     player.addListener('account_error', (e: any) => {
+      if (this.destroyed) return;
       console.error('❌ [Spotify] Account error:', e.message);
       this.isPremium = false;
       this.initPreviewMode();
     });
 
     player.addListener('authentication_error', (e: any) => {
+      if (this.destroyed) return;
       console.error('❌ [Spotify] Auth error:', e.message);
       this.isPremium = false;
       this.notifyError(new Error(`Authentication failed: ${e.message}`));
     });
 
     player.addListener('initialization_error', (e: any) => {
+      if (this.destroyed) return;
       console.error('❌ [Spotify] Init error:', e.message);
       this.isPremium = false;
       this.initPreviewMode();
     });
 
     const connected = await player.connect();
+
+    // Guard: if cleanup() was called while we were connecting, tear down immediately
+    if (this.destroyed) {
+      player.disconnect();
+      return false;
+    }
+
     console.log(connected ? '✅ [Spotify] Connected' : '❌ [Spotify] Connect failed');
-    
+
     if (!connected) {
       this.isPremium = false;
       this.initPreviewMode();
@@ -361,9 +381,10 @@ export class SpotifyAdapter implements IPlayerAdapter {
   }
 
   cleanup(): void {
+    this.destroyed = true;
     this.stopProgressTracking();
 
-    this.playSequence++; 
+    this.playSequence++;
     if (this.playAbortController) {
       this.playAbortController.abort();
       this.playAbortController = null;
