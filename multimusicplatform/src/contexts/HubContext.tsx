@@ -83,7 +83,7 @@ export function HubProvider({ children }: { children: ReactNode }) {
           setSpotifyToken(res.data.accessToken);
           storeToken('spotify', res.data.accessToken, res.data.expiresIn);
         }
-      }).catch(() => {});
+      }).catch((err) => { console.warn('[HubContext] Spotify token refresh failed:', err); });
     }
 
     const yt = getStoredToken('youtube');
@@ -94,7 +94,7 @@ export function HubProvider({ children }: { children: ReactNode }) {
           setYoutubeToken(res.data.accessToken);
           storeToken('youtube', res.data.accessToken, res.data.expiresIn);
         }
-      }).catch(() => {});
+      }).catch((err) => { console.warn('[HubContext] YouTube token refresh failed:', err); });
     }
 
     const sc = getStoredToken('soundcloud');
@@ -105,7 +105,7 @@ export function HubProvider({ children }: { children: ReactNode }) {
           setSoundcloudToken(res.data.accessToken);
           storeToken('soundcloud', res.data.accessToken, res.data.expiresIn);
         }
-      }).catch(() => {});
+      }).catch((err) => { console.warn('[HubContext] SoundCloud token refresh failed:', err); });
     }
   }, [isAuthenticated]);
 
