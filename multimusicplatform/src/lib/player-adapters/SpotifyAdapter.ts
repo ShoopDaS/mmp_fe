@@ -228,8 +228,13 @@ export class SpotifyAdapter implements IPlayerAdapter {
   }
 
   async pause(): Promise<void> {
-    if (this.isPremium && this.player) await this.player.pause();
-    else if (this.audioElement) {
+    if (this.isPremium && this.player) {
+      try {
+        await this.player.pause();
+      } catch (e) {
+        console.warn('[Spotify] pause() failed (streamer not ready):', e);
+      }
+    } else if (this.audioElement) {
       this.audioElement.pause();
       this.state.isPlaying = false;
       this.notifyStateChange();
@@ -239,8 +244,12 @@ export class SpotifyAdapter implements IPlayerAdapter {
 
   async resume(): Promise<void> {
     if (this.isPremium && this.player) {
-      await this.player.resume();
-      this.startProgressTracking();
+      try {
+        await this.player.resume();
+        this.startProgressTracking();
+      } catch (e) {
+        console.warn('[Spotify] resume() failed (streamer not ready):', e);
+      }
     } else if (this.audioElement) {
       await this.audioElement.play();
       this.state.isPlaying = true;
@@ -257,7 +266,11 @@ export class SpotifyAdapter implements IPlayerAdapter {
     console.log('⏩ [Spotify] Seeking to:', positionMs);
 
     if (this.isPremium && this.player) {
-      await this.player.seek(positionMs);
+      try {
+        await this.player.seek(positionMs);
+      } catch (e) {
+        console.warn('[Spotify] seek() failed (streamer not ready):', e);
+      }
     } else if (this.audioElement) {
       this.audioElement.currentTime = positionMs / 1000;
     }
@@ -270,7 +283,11 @@ export class SpotifyAdapter implements IPlayerAdapter {
     this.state.volume = Math.max(0, Math.min(1, volume));
 
     if (this.isPremium && this.player) {
-      await this.player.setVolume(this.state.volume);
+      try {
+        await this.player.setVolume(this.state.volume);
+      } catch (e) {
+        console.warn('[Spotify] setVolume() failed (streamer not ready):', e);
+      }
     } else if (this.audioElement) {
       this.audioElement.volume = this.state.volume;
     }
@@ -302,7 +319,11 @@ export class SpotifyAdapter implements IPlayerAdapter {
 
     if (this.isPremium && this.player) {
       this.volumeBeforeSuspend = this.state.volume;
-      await this.player.setVolume(0);
+      try {
+        await this.player.setVolume(0);
+      } catch (e) {
+        console.warn('[Spotify] suspend setVolume failed (streamer not ready):', e);
+      }
     }
   }
 
@@ -327,7 +348,11 @@ export class SpotifyAdapter implements IPlayerAdapter {
       }
 
       if (this.volumeBeforeSuspend !== null) {
-        await this.player.setVolume(this.volumeBeforeSuspend);
+        try {
+          await this.player.setVolume(this.volumeBeforeSuspend);
+        } catch (e) {
+          console.warn('[Spotify] restore setVolume failed (streamer not ready):', e);
+        }
         this.volumeBeforeSuspend = null;
       }
     }

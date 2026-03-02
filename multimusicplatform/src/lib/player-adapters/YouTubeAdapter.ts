@@ -304,6 +304,7 @@ export class YouTubeAdapter implements IPlayerAdapter {
     console.log('🧹 [YouTube] Cleaning up...');
 
     this.stopProgressTracking();
+    this.playerReady = false;
 
     if (this.player && typeof this.player.destroy === 'function') {
       try {
