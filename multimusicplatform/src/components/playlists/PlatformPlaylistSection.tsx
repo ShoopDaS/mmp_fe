@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { apiClient } from '@/lib/api';
 import { UnifiedPlaylist, CustomPlaylist } from '@/types/playlist';
 import PlaylistItem from './PlaylistItem';
+import { SpotifyIcon, YouTubeIcon, SoundCloudIcon } from '@/components/icons/BrandIcons';
 
 interface PlatformPlaylistSectionProps {
   platform: 'spotify' | 'youtube' | 'soundcloud';
@@ -16,9 +17,9 @@ interface PlatformPlaylistSectionProps {
 }
 
 const platformConfig = {
-  spotify: { name: 'Spotify', icon: '🎵', color: 'text-green-400' },
-  youtube: { name: 'YouTube Music', icon: '🎬', color: 'text-red-400' },
-  soundcloud: { name: 'SoundCloud', icon: '🔊', color: 'text-orange-400' },
+  spotify: { name: 'Spotify', color: 'text-spotify', bg: 'bg-spotify/10' },
+  youtube: { name: 'YouTube Music', color: 'text-youtube', bg: 'bg-youtube/10' },
+  soundcloud: { name: 'SoundCloud', color: 'text-soundcloud', bg: 'bg-soundcloud/10' },
 };
 
 export default function PlatformPlaylistSection({
@@ -37,6 +38,15 @@ export default function PlatformPlaylistSection({
   const [error, setError] = useState<string | null>(null);
 
   const config = platformConfig[platform];
+
+  const renderIcon = () => {
+    const className = `w-5 h-5 ${config.color}`;
+    switch (platform) {
+      case 'spotify': return <SpotifyIcon className={className} />;
+      case 'youtube': return <YouTubeIcon className={className} />;
+      case 'soundcloud': return <SoundCloudIcon className={className} />;
+    }
+  };
 
   const fetchPlaylists = useCallback(async () => {
     setIsLoading(true);
@@ -66,88 +76,63 @@ export default function PlatformPlaylistSection({
     }
   }, [platform, token]);
 
-  // Lazy load: fetch on first expand
   useEffect(() => {
     if (isExpanded && !hasFetched && !isLoading) {
       fetchPlaylists();
     }
   }, [isExpanded, hasFetched, isLoading, fetchPlaylists]);
 
-  const handleToggle = () => {
-    setIsExpanded((prev) => !prev);
-  };
-
   const handlePlaylistRefresh = async (playlist: UnifiedPlaylist) => {
     if (platform === 'spotify') {
-      // Spotify is client-side only, just re-fetch tracks
       onPlaylistRefresh(playlist);
       return;
     }
-
-    // For YT/SC: call backend to refresh this specific playlist from source
     try {
-      const response = await apiClient.refreshPlaylist(
-        platform as 'youtube' | 'soundcloud',
-        playlist.id
-      );
+      const response = await apiClient.refreshPlaylist(platform as 'youtube' | 'soundcloud', playlist.id);
       if (!response.error && response.data?.playlist) {
-        // Update just this one playlist in the sidebar list
-        setPlaylists((prev) =>
-          prev.map((p) =>
-            p.id === playlist.id ? response.data!.playlist : p
-          )
-        );
+        setPlaylists((prev) => prev.map((p) => p.id === playlist.id ? response.data!.playlist : p));
       }
     } catch (err) {
       console.error(`Error refreshing ${platform} playlist ${playlist.id}:`, err);
     }
-
-    // Then reload that specific playlist's tracks
     onPlaylistRefresh(playlist);
   };
 
   return (
-    <div className="border-b border-white/10 last:border-b-0">
-      {/* Section header */}
+    <div className="mb-1">
       <button
-        onClick={handleToggle}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/5 transition-colors"
+        onClick={() => setIsExpanded((prev) => !prev)}
+        className="w-full flex items-center justify-between px-5 py-2.5 hover:bg-white/5 transition-colors group"
       >
-        <div className="flex items-center gap-2">
-          <span
-            className={`transition-transform duration-200 text-xs text-gray-400 ${
-              isExpanded ? 'rotate-90' : ''
-            }`}
+        <div className="flex items-center gap-3">
+          <svg 
+            className={`w-3 h-3 text-text-secondary transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} 
+            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"
           >
-            ▶
-          </span>
-          <span className="text-lg">{config.icon}</span>
-          <span className={`font-medium text-sm ${config.color}`}>{config.name}</span>
-          {hasFetched && (
-            <span className="text-xs text-gray-500">({playlists.length})</span>
-          )}
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+          <div className="flex items-center gap-2">
+            {renderIcon()}
+            <span className="font-semibold text-sm text-white/90 group-hover:text-white transition-colors">
+              {config.name}
+            </span>
+          </div>
         </div>
+        {hasFetched && (
+          <span className="text-[11px] font-medium text-text-secondary bg-surface-hover px-2 py-0.5 rounded-full">
+            {playlists.length}
+          </span>
+        )}
       </button>
 
-      {/* Playlist list */}
       {isExpanded && (
-        <div className="px-2 pb-2">
+        <div className="px-3 pb-2 mt-1 space-y-0.5">
           {isLoading && !hasFetched && (
-            <div className="px-3 py-4 text-center text-sm text-gray-400">
-              Loading playlists...
-            </div>
+            <div className="px-4 py-3 text-xs text-text-secondary animate-pulse">Loading playlists...</div>
           )}
-
-          {error && (
-            <div className="px-3 py-2 text-sm text-red-400">
-              {error}
-            </div>
-          )}
-
+          {error && <div className="px-4 py-2 text-xs text-red-400">{error}</div>}
           {hasFetched && playlists.length === 0 && !error && (
-            <div className="px-3 py-4 text-center text-sm text-gray-500">
-              No playlists found
-            </div>
+            <div className="px-4 py-3 text-xs text-text-secondary italic">No playlists found</div>
           )}
 
           {playlists.map((playlist) => (
@@ -167,37 +152,20 @@ export default function PlatformPlaylistSection({
   );
 }
 
-// ========== Spotify Client-Side Fetch ==========
-
 async function fetchSpotifyPlaylists(token: string): Promise<UnifiedPlaylist[]> {
   const allPlaylists: UnifiedPlaylist[] = [];
-  let url: string | null = 'https://api.spotify.com/v1/me/playlists?limit=50';
-
+  let url: string | null = 'https://api.spotify.com/v1/me/playlists';
   while (url) {
-    const response: Response = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Spotify API error: ${response.status}`);
-    }
-
+    const response: Response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!response.ok) throw new Error(`Spotify API error: ${response.status}`);
     const data: any = await response.json();
-
     for (const item of data.items || []) {
       allPlaylists.push({
-        id: item.id,
-        platform: 'spotify',
-        name: item.name,
-        trackCount: item.tracks?.total || 0,
-        imageUrl: item.images?.[0]?.url || null,
-        uri: item.uri,
-        owner: item.owner?.display_name || '',
+        id: item.id, platform: 'spotify', name: item.name, trackCount: item.tracks?.total || 0,
+        imageUrl: item.images?.[0]?.url || null, uri: item.uri, owner: item.owner?.display_name || '',
       });
     }
-
     url = data.next || null;
   }
-
   return allPlaylists;
 }
