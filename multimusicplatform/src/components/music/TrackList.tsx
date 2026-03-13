@@ -268,7 +268,7 @@ export default function TrackList({
 
               {isCustomPlaylist && onRemoveFromPlaylist && (
                 <button onClick={(e) => handleRemoveClick(e, track)} className="p-1.5 rounded-md text-text-secondary opacity-0 group-hover:opacity-100 hover:bg-red-500/20 hover:text-red-400 transition-all flex items-center justify-center" title="Remove from playlist">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                 </button>
               )}
 
@@ -277,18 +277,18 @@ export default function TrackList({
                   {onPlayNext && (
                     <button onClick={(e) => { handlePlayNext(e, track); setOpenMenuId(null); setAddToPlaylistOpenId(null); }} className="w-full flex items-center gap-3 px-3 py-2.5 text-[13px] text-gray-200 hover:bg-white/10 transition-colors">
                       {feedback === 'next' ? (
-                        <><svg className="w-4 h-4 text-green-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg><span className="text-green-400">Up next!</span></>
+                        <><svg className="w-4 h-4 text-green-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg><span className="text-green-400">Up next!</span></>
                       ) : (
-                        <><svg className="w-4 h-4 text-text-secondary shrink-0" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" /></svg>Add next in queue</>
+                        <><svg className="w-4 h-4 text-text-secondary shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" /></svg>Add next in queue</>
                       )}
                     </button>
                   )}
                   {onAddToQueue && (
                     <button onClick={(e) => { handleAddToQueue(e, track); setOpenMenuId(null); setAddToPlaylistOpenId(null); }} className="w-full flex items-center gap-3 px-3 py-2.5 text-[13px] text-gray-200 hover:bg-white/10 transition-colors">
                       {feedback === 'queued' ? (
-                        <><svg className="w-4 h-4 text-green-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg><span className="text-green-400">Added!</span></>
+                        <><svg className="w-4 h-4 text-green-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg><span className="text-green-400">Added!</span></>
                       ) : (
-                        <><svg className="w-4 h-4 text-text-secondary shrink-0" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>Add to queue</>
+                        <><svg className="w-4 h-4 text-text-secondary shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>Add to queue</>
                       )}
                     </button>
                   )}
@@ -298,7 +298,7 @@ export default function TrackList({
                       <div className="border-t border-white/10 my-1" />
                       <button onClick={(e) => toggleAddToPlaylistPanel(e, track)} className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-[13px] text-gray-200 hover:bg-white/10 transition-colors">
                         <span className="flex items-center gap-3">
-                          <svg className="w-4 h-4 text-text-secondary shrink-0" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></svg>
+                          <svg className="w-4 h-4 text-text-secondary shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></svg>
                           Add to playlist
                         </span>
                         <svg className="w-3.5 h-3.5 text-text-secondary shrink-0" fill="currentColor" viewBox="0 0 20 20">
@@ -321,7 +321,7 @@ export default function TrackList({
                                     <button key={pl.playlistId} onClick={(e) => { e.stopPropagation(); if (!alreadyIn) handleAddToPlaylist(track, pl.playlistId, onAddToCustomPlaylist!); }} disabled={alreadyIn} className={`w-full flex items-center gap-2.5 px-3 py-2 text-[13px] transition-colors ${alreadyIn ? 'text-gray-500 cursor-not-allowed' : 'text-gray-200 hover:bg-white/10'}`}>
                                       <DefaultMusicIcon className="w-3.5 h-3.5 text-accent shrink-0" />
                                       <span className="truncate flex-1 text-left">{pl.name}</span>
-                                      {(alreadyIn || justAdded) && <svg className="w-3.5 h-3.5 text-green-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                                      {(alreadyIn || justAdded) && <svg className="w-3.5 h-3.5 text-green-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
                                     </button>
                                   );
                                 })
@@ -343,7 +343,7 @@ export default function TrackList({
                                     <button key={pl.id} onClick={(e) => { e.stopPropagation(); if (!alreadyIn) handleAddToPlaylist(track, pl.id, onAddToPlatformPlaylist); }} disabled={alreadyIn} className={`w-full flex items-center gap-2.5 px-3 py-2 text-[13px] transition-colors ${alreadyIn ? 'text-gray-500 cursor-not-allowed' : 'text-gray-200 hover:bg-white/10'}`}>
                                       <div className={`${meta.color} shrink-0`}>{meta.icon}</div>
                                       <span className="truncate flex-1 text-left">{pl.name}</span>
-                                      {(alreadyIn || justAdded) && <svg className="w-3.5 h-3.5 text-green-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                                      {(alreadyIn || justAdded) && <svg className="w-3.5 h-3.5 text-green-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
                                     </button>
                                   );
                                 })
