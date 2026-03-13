@@ -253,9 +253,9 @@ export default function TrackList({
               </p>
             </div>
 
-            <div className="flex items-center gap-1 shrink-0">
+            <div className="relative flex items-center gap-1 shrink-0" ref={openMenuId === track.id ? menuRef : undefined}>
             {/* Actions Menu */}
-            <div className="relative" ref={openMenuId === track.id ? menuRef : undefined}>
+            <div>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
