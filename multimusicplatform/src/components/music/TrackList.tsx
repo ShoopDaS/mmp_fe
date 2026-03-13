@@ -253,9 +253,7 @@ export default function TrackList({
               </p>
             </div>
 
-            <div className="relative shrink-0" ref={openMenuId === track.id ? menuRef : undefined}>
-            {/* Actions Menu */}
-            <div className="flex items-center gap-1">
+            <div className="relative flex items-center gap-1 shrink-0" ref={openMenuId === track.id ? menuRef : undefined}>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -273,7 +271,6 @@ export default function TrackList({
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                 </button>
               )}
-            </div>
 
               {openMenuId === track.id && (
                 <div className={`absolute right-0 top-full mt-1 bg-surface-hover border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden transition-all ${isAddToPlaylistOpen ? 'w-60' : 'w-48'}`}>
