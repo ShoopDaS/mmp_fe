@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import LoginSection from '@/components/auth/LoginSection';
+import { BRAND } from '@/lib/constants/brand';
 
 export default function HomePage() {
   const router = useRouter();
@@ -58,7 +59,10 @@ export default function HomePage() {
       <div className="max-w-md w-full space-y-8">
         {/* Header */}
         <div className="text-center">
-          <h1 className="text-5xl font-bold text-white mb-2">MultiMusic</h1>
+          <h1 className="text-5xl font-bold text-white mb-2 flex items-center justify-center gap-3">
+            <span style={{ color: BRAND.colors.accent }}>{BRAND.logoIcon}</span>
+            {BRAND.name}
+          </h1>
           <p className="text-xl text-gray-300">One platform, all your music</p>
         </div>
 

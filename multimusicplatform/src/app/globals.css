@@ -3,27 +3,20 @@
 @tailwind utilities;
 
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
-  }
+  /* Core layout colors */
+  --bg-base: #0a0a0c;          /* Deep Obsidian background */
+  --surface-color: #16161a;    /* Elevated grey for sidebars/cards */
+  --surface-hover: #232329;    /* Slightly lighter grey for hover states */
+  --accent-color: #6366f1;     /* Brand Indigo */
+  
+  /* Text colors */
+  --text-primary: #ffffff;
+  --text-secondary: #a1a1aa;
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+  background-color: var(--bg-base);
+  color: var(--text-primary);
 }
 
 @layer utilities {
