@@ -51,7 +51,7 @@ export async function fetchYouTubeOwnedPlaylists(token: string): Promise<{ id: s
 // ========== Add-Track Helpers ==========
 
 export async function addTrackToSpotifyPlaylist(trackUri: string, playlistId: string, token: string): Promise<void> {
-  await fetch(`https://api.spotify.com/v1/playlists/${playlistId}/tracks`, {
+  const res = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}/tracks`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -59,10 +59,14 @@ export async function addTrackToSpotifyPlaylist(trackUri: string, playlistId: st
     },
     body: JSON.stringify({ uris: [trackUri] }),
   });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.error?.message || `Spotify API error ${res.status}`);
+  }
 }
 
 export async function addTrackToYouTubePlaylist(videoId: string, playlistId: string, token: string): Promise<void> {
-  await fetch('https://www.googleapis.com/youtube/v3/playlistItems?part=snippet', {
+  const res = await fetch('https://www.googleapis.com/youtube/v3/playlistItems?part=snippet', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -75,6 +79,10 @@ export async function addTrackToYouTubePlaylist(videoId: string, playlistId: str
       },
     }),
   });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.error?.message || `YouTube API error ${res.status}`);
+  }
 }
 
 // ========== Playlist Track ID Fetchers (lightweight, for duplicate detection) ==========
