@@ -4,12 +4,12 @@ import { useState, useEffect, useCallback } from 'react';
 import { apiClient } from '@/lib/api';
 import { CustomPlaylist, UnifiedPlaylist } from '@/types/playlist';
 import PlaylistCover from '@/components/music/PlaylistCover';
+import { DefaultMusicIcon } from '@/components/icons/BrandIcons';
 
 interface CustomPlaylistSectionProps {
   activePlaylistId: string | null;
   onPlaylistSelect: (playlist: UnifiedPlaylist) => void;
   onCreateClick: () => void;
-  /** Externally-managed playlist list so parent can update after create */
   playlists: CustomPlaylist[];
   onPlaylistsChange: (playlists: CustomPlaylist[]) => void;
 }
@@ -54,80 +54,47 @@ export default function CustomPlaylistSection({
   const handleDelete = async (e: React.MouseEvent, playlistId: string) => {
     e.stopPropagation();
     if (!confirm('Delete this playlist?')) return;
-
     setDeletingId(playlistId);
     try {
       const response = await apiClient.deleteCustomPlaylist(playlistId);
       if (!response.error) {
         onPlaylistsChange(playlists.filter((p) => p.playlistId !== playlistId));
       }
-    } catch (err) {
-      console.error('Failed to delete playlist:', err);
     } finally {
       setDeletingId(null);
     }
   };
 
   const toUnifiedPlaylist = (cp: CustomPlaylist): UnifiedPlaylist => ({
-    id: cp.playlistId,
-    platform: 'mmp',
-    name: cp.name,
-    trackCount: cp.trackCount,
-    imageUrl: cp.imageUrl,
-    uri: '',
-    owner: '',
+    id: cp.playlistId, platform: 'mmp', name: cp.name, trackCount: cp.trackCount,
+    imageUrl: cp.imageUrl, uri: '', owner: '',
   });
 
   return (
-    <div className="border-b border-white/10">
-      {/* Section header */}
-      <div className="flex items-center justify-between px-4 py-3 hover:bg-white/5 transition-colors">
-        <button
-          onClick={() => setIsExpanded((prev) => !prev)}
-          className="flex items-center gap-2 flex-1"
-        >
-          <span
-            className={`transition-transform duration-200 text-xs text-gray-400 ${
-              isExpanded ? 'rotate-90' : ''
-            }`}
-          >
-            ▶
-          </span>
-          <span className="text-lg">🎧</span>
-          <span className="font-medium text-sm text-purple-400">My Playlists</span>
-          {hasFetched && (
-            <span className="text-xs text-gray-500">({playlists.length})</span>
-          )}
+    <div className="mb-4">
+      <div className="flex items-center justify-between px-5 py-2.5 hover:bg-white/5 transition-colors group">
+        <button onClick={() => setIsExpanded((prev) => !prev)} className="flex items-center gap-3 flex-1">
+          <svg className={`w-3 h-3 text-text-secondary transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+          <div className="flex items-center gap-2">
+            <DefaultMusicIcon className="w-5 h-5 text-accent" />
+            <span className="font-semibold text-sm text-white/90 group-hover:text-white transition-colors">My Playlists</span>
+          </div>
         </button>
 
-        {/* Create button */}
-        <button
-          onClick={onCreateClick}
-          className="text-gray-400 hover:text-white text-lg px-1 transition-colors"
-          title="Create new playlist"
-        >
-          +
+        <button onClick={onCreateClick} className="text-text-secondary hover:text-accent p-1 transition-colors" title="Create new playlist">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+          </svg>
         </button>
       </div>
 
-      {/* Playlist list */}
       {isExpanded && (
-        <div className="px-2 pb-2">
-          {isLoading && !hasFetched && (
-            <div className="px-3 py-4 text-center text-sm text-gray-400">
-              Loading playlists...
-            </div>
-          )}
-
-          {error && (
-            <div className="px-3 py-2 text-sm text-red-400">{error}</div>
-          )}
-
-          {hasFetched && playlists.length === 0 && !error && (
-            <div className="px-3 py-4 text-center text-sm text-gray-500">
-              No playlists yet. Create one!
-            </div>
-          )}
+        <div className="px-3 pb-2 mt-1 space-y-0.5">
+          {isLoading && !hasFetched && <div className="px-4 py-3 text-xs text-text-secondary animate-pulse">Loading playlists...</div>}
+          {error && <div className="px-4 py-2 text-xs text-red-400">{error}</div>}
+          {hasFetched && playlists.length === 0 && !error && <div className="px-4 py-3 text-xs text-text-secondary italic">No playlists yet. Create one!</div>}
 
           {playlists.map((playlist) => {
             const isActive = activePlaylistId === playlist.playlistId;
@@ -138,42 +105,30 @@ export default function CustomPlaylistSection({
                 key={playlist.playlistId}
                 onClick={() => onPlaylistSelect(toUnifiedPlaylist(playlist))}
                 disabled={isDeleting}
-                className={`
-                  w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors group
-                  ${isActive
-                    ? 'bg-white/20 text-white'
-                    : 'text-gray-300 hover:bg-white/10 hover:text-white'
-                  }
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-left transition-all duration-200 group relative
+                  ${isActive ? 'bg-white/10 text-white shadow-sm' : 'text-text-secondary hover:bg-white/5 hover:text-white'}
                   ${isDeleting ? 'opacity-50' : ''}
                 `}
               >
-                {/* Thumbnail */}
-                <PlaylistCover coverImage={playlist.coverImage} size="sm" />
-
-                {/* Info */}
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{playlist.name}</p>
-                  <p className="text-xs text-gray-400 truncate">
-                    {playlist.trackCount} track{playlist.trackCount !== 1 ? 's' : ''}
-                  </p>
-                  {playlist.description && (
-                    <p className="text-xs text-gray-500 truncate">{playlist.description}</p>
-                  )}
+                {isActive && <div className="absolute left-0 top-1.5 bottom-1.5 w-1 bg-accent rounded-r-full" />}
+                
+                <div className="shrink-0 w-10 h-10 overflow-hidden rounded-md border border-white/5 shadow-sm">
+                  <PlaylistCover coverImage={playlist.coverImage} size="sm" />
                 </div>
 
-                {/* Delete button */}
+                <div className="flex-1 min-w-0 flex flex-col justify-center">
+                  <p className={`text-[13px] font-semibold truncate ${isActive ? 'text-white' : 'text-white/80'}`}>{playlist.name}</p>
+                  <p className="text-[11px] text-text-secondary truncate mt-0.5">
+                    {playlist.trackCount} track{playlist.trackCount !== 1 ? 's' : ''}
+                  </p>
+                </div>
+
                 <span
                   onClick={(e) => handleDelete(e, playlist.playlistId)}
-                  className={`
-                    flex-shrink-0 text-xs p-1 rounded transition-all cursor-pointer
-                    ${isDeleting
-                      ? 'text-gray-300'
-                      : 'text-gray-500 opacity-0 group-hover:opacity-100 hover:text-red-400'
-                    }
-                  `}
+                  className={`shrink-0 p-1.5 rounded-md transition-all cursor-pointer ${isDeleting ? 'text-text-secondary' : 'text-text-secondary opacity-0 group-hover:opacity-100 hover:text-red-400 hover:bg-red-500/10'}`}
                   title="Delete playlist"
                 >
-                  {isDeleting ? '...' : '✕'}
+                  {isDeleting ? '...' : <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>}
                 </span>
               </button>
             );

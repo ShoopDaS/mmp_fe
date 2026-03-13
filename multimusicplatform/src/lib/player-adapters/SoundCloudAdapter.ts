@@ -3,7 +3,7 @@ import { IPlayerAdapter, Track, PlayerState } from './IPlayerAdapter';
 export class SoundCloudAdapter implements IPlayerAdapter {
   private widget: any = null;
   private token: string = '';
-  private isDestroyed: boolean = false; // 🚨 THE KILL SWITCH
+  private isDestroyed: boolean = false;
   private volumeBeforeSuspend: number | null = null;
   
   private state: PlayerState = {
@@ -22,31 +22,38 @@ export class SoundCloudAdapter implements IPlayerAdapter {
 
   async initialize(token: string): Promise<boolean> {
     this.token = token;
-    this.isDestroyed = false; // Reset on init
-    console.log('🎵 [SoundCloud] Initializing...');
+    this.isDestroyed = false;
 
     return new Promise((resolve) => {
       if (!(window as any).SC) {
-        const script = document.createElement('script');
-        script.src = 'https://w.soundcloud.com/player/api.js';
-        script.async = true;
-        
-        script.onload = () => {
-          // 🚨 GUARD: Did the user switch songs while we were downloading the script?
-          if (this.isDestroyed) {
-            console.log('🛑 [SoundCloud] Aborting init: Adapter destroyed during script load.');
-            return resolve(false);
-          }
-          console.log('✅ [SoundCloud] SDK Ready');
-          this.initWidget().then(resolve);
-        };
+        // Only inject the script tag once (survives React re-mounts)
+        if (!document.querySelector('script[src="https://w.soundcloud.com/player/api.js"]')) {
+          const script = document.createElement('script');
+          script.src = 'https://w.soundcloud.com/player/api.js';
+          script.async = true;
 
-        script.onerror = () => {
-          console.error('❌ [SoundCloud] Failed to load SDK script');
-          resolve(false);
-        };
-        
-        document.body.appendChild(script);
+          script.onload = () => {
+            if (this.isDestroyed) return resolve(false);
+            this.initWidget().then(resolve);
+          };
+          script.onerror = () => {
+            console.error('❌ [SoundCloud] Failed to load SDK script');
+            resolve(false);
+          };
+
+          document.body.appendChild(script);
+        } else {
+          // Script tag exists but hasn't loaded yet — poll for it
+          const waitForSC = setInterval(() => {
+            if ((window as any).SC) {
+              clearInterval(waitForSC);
+              if (this.isDestroyed) return resolve(false);
+              this.initWidget().then(resolve);
+            }
+          }, 100);
+          // Give up after 10s
+          setTimeout(() => { clearInterval(waitForSC); resolve(false); }, 10000);
+        }
       } else {
         this.initWidget().then(resolve);
       }
@@ -54,12 +61,13 @@ export class SoundCloudAdapter implements IPlayerAdapter {
   }
 
   private async initWidget(): Promise<boolean> {
-    // 🚨 GUARD: Double check before building the iframe
     if (this.isDestroyed) return false;
 
-    console.log('🎮 [SoundCloud] Initializing Widget...');
+    // Reuse the existing widget if it's still alive
+    if (this.widget && this.state.canPlay) {
+      return true;
+    }
 
-    // Purge any existing iframe forcefully
     const existingIframe = document.getElementById('sc-widget') as HTMLIFrameElement;
     if (existingIframe) {
       existingIframe.src = '';
@@ -68,26 +76,22 @@ export class SoundCloudAdapter implements IPlayerAdapter {
 
     const iframe = document.createElement('iframe');
     iframe.id = 'sc-widget';
-    iframe.width = '100%';
-    iframe.height = '166';
+    // 🚨 FIXED: Prevent browser background throttling by keeping it rendered but off-screen
+    iframe.style.position = 'absolute';
+    iframe.style.left = '-9999px';
+    iframe.style.width = '1px';
+    iframe.style.height = '1px';
+    iframe.style.opacity = '0';
     iframe.allow = 'autoplay';
-    iframe.style.display = 'none'; 
     iframe.src = 'https://w.soundcloud.com/player/?url=';
     document.body.appendChild(iframe);
 
     const SC = (window as any).SC;
     this.widget = SC.Widget(iframe);
 
-    // 🚨 FIX: Wait for READY inside a Promise so initialize() doesn't resolve prematurely.
-    // This prevents the race condition where READY fires before bind is called,
-    // AND ensures the adapter reports canPlay=true before the component tries to play.
     return new Promise<boolean>((resolve) => {
       const onReady = () => {
-        if (this.isDestroyed) {
-          resolve(false);
-          return;
-        }
-        console.log('✅ [SoundCloud] Widget Ready');
+        if (this.isDestroyed) { resolve(false); return; }
         this.state.canPlay = true;
         this.widget.setVolume(this.state.volume * 100);
         this.notifyStateChange();
@@ -96,12 +100,8 @@ export class SoundCloudAdapter implements IPlayerAdapter {
 
       this.widget.bind(SC.Widget.Events.READY, onReady);
 
-      // 🚨 SAFETY NET: If READY doesn't fire within 5 seconds, resolve anyway.
-      // The widget with an empty URL should fire READY quickly, but if it doesn't,
-      // we don't want to hang forever.
       setTimeout(() => {
         if (!this.state.canPlay && !this.isDestroyed) {
-          console.warn('⚠️ [SoundCloud] READY event timed out, forcing ready state');
           this.state.canPlay = true;
           this.notifyStateChange();
           resolve(true);
@@ -109,8 +109,6 @@ export class SoundCloudAdapter implements IPlayerAdapter {
       }, 5000);
     }).then((ready) => {
       if (!ready || this.isDestroyed) return false;
-
-      // Bind remaining events AFTER widget is confirmed ready
       const SC = (window as any).SC;
 
       this.widget.bind(SC.Widget.Events.PLAY, () => {
@@ -134,9 +132,7 @@ export class SoundCloudAdapter implements IPlayerAdapter {
       this.widget.bind(SC.Widget.Events.PLAY_PROGRESS, (data: any) => {
         if (this.isDestroyed) return;
         this.state.currentTime = data.currentPosition;
-        if (!this.state.duration || this.state.duration === 0) {
-          this.fetchDuration();
-        }
+        if (!this.state.duration || this.state.duration === 0) this.fetchDuration();
         this.notifyStateChange();
       });
 
@@ -144,10 +140,6 @@ export class SoundCloudAdapter implements IPlayerAdapter {
     });
   }
 
-  /**
-   * Fetch duration from the SoundCloud Widget API.
-   * The PLAY_PROGRESS event does NOT include duration — it must be queried separately.
-   */
   private fetchDuration(): void {
     if (this.isDestroyed || !this.widget) return;
     this.widget.getDuration((duration: number) => {
@@ -160,35 +152,17 @@ export class SoundCloudAdapter implements IPlayerAdapter {
 
   async play(track: Track): Promise<void> {
     if (this.isDestroyed || !this.widget) return;
-    console.log('🎵 [SoundCloud] Playing:', track.name);
-    
-    // Reset duration for new track so we re-fetch it
     this.state.duration = 0;
     this.state.currentTime = 0;
-    
-    await this.widget.load(track.uri, {
-      auto_play: true,
-      show_artwork: false,
-    });
+    await this.widget.load(track.uri, { auto_play: true, show_artwork: false });
   }
 
-  async pause(): Promise<void> {
-    if(this.widget && !this.isDestroyed) await this.widget.pause();
-  }
-
-  async resume(): Promise<void> {
-    if(this.widget && !this.isDestroyed) await this.widget.play();
-  }
-
-  async togglePlay(): Promise<void> {
-    if(this.widget && !this.isDestroyed) await this.widget.toggle();
-  }
+  async pause(): Promise<void> { if(this.widget && !this.isDestroyed) await this.widget.pause(); }
+  async resume(): Promise<void> { if(this.widget && !this.isDestroyed) await this.widget.play(); }
+  async togglePlay(): Promise<void> { if(this.widget && !this.isDestroyed) await this.widget.toggle(); }
 
   async seek(positionMs: number): Promise<void> {
-    if(this.widget && !this.isDestroyed) {
-      console.log('⏩ [SoundCloud] Seeking to:', positionMs);
-      await this.widget.seekTo(positionMs);
-    }
+    if(this.widget && !this.isDestroyed) await this.widget.seekTo(positionMs);
   }
 
   async setVolume(volume: number): Promise<void> {
@@ -201,19 +175,13 @@ export class SoundCloudAdapter implements IPlayerAdapter {
   async setLoop(enabled: boolean): Promise<void> {
     if (this.isDestroyed) return;
     this.state.isLooping = enabled;
-    console.log('🔁 [SoundCloud] Loop:', enabled);
     this.notifyStateChange();
   }
 
-  getState(): PlayerState {
-    return { ...this.state };
-  }
+  getState(): PlayerState { return { ...this.state }; }
 
   async suspend(): Promise<void> {
-    console.log('💤 [SoundCloud] Suspending...');
     await this.pause();
-    // Silence the widget directly (without touching state.volume) so audio
-    // can't bleed through if the widget is slow to honour the pause command.
     if (this.widget && !this.isDestroyed) {
       this.volumeBeforeSuspend = this.state.volume;
       this.widget.setVolume(0);
@@ -221,7 +189,6 @@ export class SoundCloudAdapter implements IPlayerAdapter {
   }
 
   async restore(): Promise<boolean> {
-    console.log('🔄 [SoundCloud] Restoring...');
     if (this.volumeBeforeSuspend !== null && this.widget && !this.isDestroyed) {
       this.widget.setVolume(this.volumeBeforeSuspend * 100);
       this.volumeBeforeSuspend = null;
@@ -230,12 +197,7 @@ export class SoundCloudAdapter implements IPlayerAdapter {
   }
 
   cleanup(): void {
-    console.log('🧹 [SoundCloud] Cleaning up...');
-    
-    // 🚨 1. Trigger the Kill Switch immediately so pending callbacks abort
     this.isDestroyed = true; 
-
-    // 2. Unbind widget events if it was created
     if (this.widget) {
       const SC = (window as any).SC;
       if (SC) {
@@ -248,48 +210,28 @@ export class SoundCloudAdapter implements IPlayerAdapter {
       this.widget = null;
     }
 
-    // 🚨 3. The Audio Guillotine: Hunt down the iframe regardless of widget state
     const iframe = document.getElementById('sc-widget') as HTMLIFrameElement;
     if (iframe) {
-      iframe.src = ''; // Force the browser to instantly sever the audio stream
-      iframe.remove(); // Destroy the element
+      iframe.src = '';
+      iframe.remove();
     }
   }
 
-  onStateChange(callback: (state: PlayerState) => void): void {
-    this.stateChangeCallback = callback;
-  }
-
-  onTrackEnd(callback: () => void): void {
-    this.trackEndCallback = callback;
-  }
-
-  onError(callback: (error: Error) => void): void {
-    this.errorCallback = callback;
-  }
+  onStateChange(callback: (state: PlayerState) => void): void { this.stateChangeCallback = callback; }
+  onTrackEnd(callback: () => void): void { this.trackEndCallback = callback; }
+  onError(callback: (error: Error) => void): void { this.errorCallback = callback; }
 
   private notifyStateChange(): void {
-    if (!this.isDestroyed && this.stateChangeCallback) {
-      this.stateChangeCallback(this.getState());
-    }
+    if (!this.isDestroyed && this.stateChangeCallback) this.stateChangeCallback(this.getState());
   }
 
   private handleTrackEnd(): void {
-    console.log('🏁 [SoundCloud] Track ended');
     this.state.isPlaying = false;
-
-    if (this.state.isLooping && this.trackEndCallback) {
-      this.trackEndCallback();
-    } else if (this.trackEndCallback) {
-      this.trackEndCallback();
-    }
-
+    if (this.trackEndCallback) this.trackEndCallback();
     this.notifyStateChange();
   }
 
   private notifyError(error: Error): void {
-    if (!this.isDestroyed && this.errorCallback) {
-      this.errorCallback(error);
-    }
+    if (!this.isDestroyed && this.errorCallback) this.errorCallback(error);
   }
 }
