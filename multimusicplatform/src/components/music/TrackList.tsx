@@ -306,8 +306,9 @@ export default function TrackList({
                 </p>
               </div>
 
+              <div className="flex items-center gap-1 shrink-0">
               {/* Track menu (kebab) */}
-              <div className="relative shrink-0" ref={openMenuId === track.id ? menuRef : undefined}>
+              <div className="relative" ref={openMenuId === track.id ? menuRef : undefined}>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -491,7 +492,7 @@ export default function TrackList({
               {isCustomPlaylist && onRemoveFromPlaylist && (
                 <button
                   onClick={(e) => handleRemoveClick(e, track)}
-                  className="shrink-0 p-2 rounded-full bg-white/5 text-text-secondary opacity-0 group-hover:opacity-100 hover:bg-red-500/20 hover:text-red-400 transition-all"
+                  className="p-2 rounded-full bg-white/5 text-text-secondary opacity-0 group-hover:opacity-100 hover:bg-red-500/20 hover:text-red-400 transition-all flex items-center justify-center"
                   title="Remove from playlist"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -499,6 +500,7 @@ export default function TrackList({
                   </svg>
                 </button>
               )}
+              </div>
             </div>
           );
         })}
