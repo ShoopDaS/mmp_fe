@@ -360,7 +360,6 @@ export default function TrackList({
                 </div>
               )}
             </div>
-            </div>
           </div>
         );
       })}
