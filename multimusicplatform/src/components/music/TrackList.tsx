@@ -307,11 +307,11 @@ export default function TrackList({
                       </button>
 
                       {isAddToPlaylistOpen && (
-                        <div className="max-h-56 overflow-y-auto border-t border-white/10 bg-black/20 scrollbar-thin scrollbar-thumb-white/10">
+                        <div className="max-h-56 overflow-y-auto border-t border-white/10 scrollbar-thin scrollbar-thumb-white/10">
                           {onAddToCustomPlaylist && (
-                            <div>
+                            <>
                               <p
-                                className="sticky top-0 bg-surface-hover/95 backdrop-blur px-3 py-1.5 text-[10px] text-text-secondary uppercase tracking-wider font-bold z-20 cursor-pointer hover:text-white transition-colors"
+                                className="sticky top-0 bg-surface-hover px-3 py-1.5 text-[10px] text-text-secondary uppercase tracking-wider font-bold z-20 cursor-pointer hover:text-white transition-colors"
                                 onClick={(e) => { e.stopPropagation(); e.currentTarget.closest('.overflow-y-auto')?.scrollTo({ top: 0, behavior: 'smooth' }); }}
                               >My Playlists</p>
                               {!customPlaylists || customPlaylists.length === 0 ? (
@@ -329,13 +329,13 @@ export default function TrackList({
                                   );
                                 })
                               )}
-                            </div>
+                            </>
                           )}
                           {onAddToPlatformPlaylist && track.platform !== 'soundcloud' && (
-                            <div>
+                            <>
                               <p
-                                className="sticky top-6 bg-surface-hover/95 backdrop-blur px-3 py-1.5 text-[10px] text-text-secondary uppercase tracking-wider font-bold border-t border-white/10 z-10 cursor-pointer hover:text-white transition-colors"
-                                onClick={(e) => { e.stopPropagation(); (e.currentTarget.parentElement as HTMLElement)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}
+                                className="sticky top-[24px] bg-surface-hover px-3 py-1.5 text-[10px] text-text-secondary uppercase tracking-wider font-bold border-t border-white/10 z-10 cursor-pointer hover:text-white transition-colors"
+                                onClick={(e) => { e.stopPropagation(); const container = e.currentTarget.closest('.overflow-y-auto'); const offset = e.currentTarget.offsetTop - 24; container?.scrollTo({ top: offset, behavior: 'smooth' }); }}
                               >{meta.label}</p>
                               {!platformPlaylists || platformPlaylists === 'loading' ? (
                                 <p className="px-3 py-2 text-xs text-text-secondary italic animate-pulse">Loading...</p>
@@ -354,7 +354,7 @@ export default function TrackList({
                                   );
                                 })
                               )}
-                            </div>
+                            </>
                           )}
                         </div>
                       )}
