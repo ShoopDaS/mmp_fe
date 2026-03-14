@@ -1,9 +1,10 @@
 'use client';
 
 import { GoogleIcon, MicrosoftIcon } from '@/components/icons/ProviderIcons';
+import { SpotifyIcon } from '@/components/icons/BrandIcons';
 
 interface ProviderButtonProps {
-  provider: 'google' | 'microsoft';
+  provider: 'google' | 'microsoft' | 'spotify';
   onClick: () => void;
   disabled?: boolean;
   comingSoon?: boolean;
@@ -21,6 +22,12 @@ const providerConfig = {
     Icon: MicrosoftIcon,
     bg: 'bg-blue-600 hover:bg-blue-700',
     text: 'text-white',
+  },
+  spotify: {
+    name: 'Spotify',
+    Icon: SpotifyIcon,
+    bg: 'bg-spotify hover:bg-[#1aa34a]',
+    text: 'text-black',
   },
 };
 

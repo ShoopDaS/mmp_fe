@@ -29,7 +29,7 @@
 |---|---|
 | `app/` | Pages only. Auth redirect logic in `page.tsx`, OAuth callback forwarding in `dashboard/page.tsx`. No components defined here. |
 | `app/search/` | The heaviest page: cross-platform search, playlist track loading, all add-to-playlist orchestration. |
-| `components/auth/` | Login UI only (`LoginSection`, `ProviderButton`). Only Google OAuth is active; Microsoft/GitHub are stubs. |
+| `components/auth/` | Login UI only (`LoginSection`, `ProviderButton`). Google and Spotify OAuth are active; Microsoft remains a stub. |
 | `components/dashboard/` | Profile page components: `PlatformCard` (shows connected platform), `ConnectButton` (initiates OAuth). |
 | `components/layout/` | `AppLayout` (3-pane shell: sidebar + main + player), `LeftSidebar` (nav + playlist library). |
 | `components/music/` | Player UI + search inputs. See `components/music/CLAUDE.md`. |

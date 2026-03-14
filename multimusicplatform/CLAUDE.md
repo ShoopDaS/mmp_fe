@@ -33,7 +33,7 @@ Backend must be running on port 8080. Frontend won't function without it.
 | File | Purpose |
 |---|---|
 | `src/app/layout.tsx` | Root layout — wraps app in AuthProvider → QueueProvider → HubProvider |
-| `src/app/page.tsx` | Landing / login page (Google OAuth only; Microsoft/GitHub are stubs) |
+| `src/app/page.tsx` | Landing / login page (Google + Spotify OAuth; Microsoft remains a stub) |
 | `src/app/dashboard/page.tsx` | Post-login dashboard; handles OAuth callbacks |
 | `src/app/search/page.tsx` | Main app page — cross-platform search, playlist management |
 | `src/lib/api.ts` | `apiClient` singleton — all backend calls go through here |
