@@ -26,7 +26,7 @@ const providerConfig = {
   spotify: {
     name: 'Spotify',
     Icon: SpotifyIcon,
-    bg: 'bg-spotify',
+    bg: 'bg-spotify hover:bg-[#1aa34a]',
     text: 'text-black',
   },
 };
