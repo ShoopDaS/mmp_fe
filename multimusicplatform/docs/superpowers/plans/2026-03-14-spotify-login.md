@@ -281,17 +281,18 @@ def test_callback_handler_creates_user_and_redirects():
     context = MagicMock()
 
     mock_response = MagicMock()
-    mock_response.json.side_effect = [TOKEN_RESPONSE, SPOTIFY_USER_INFO]
+    mock_response.json.return_value = TOKEN_RESPONSE
     mock_response.raise_for_status = MagicMock()
 
     with patch('src.handlers.auth.spotify.auth_handler') as mock_auth, \
+         patch('src.handlers.auth.spotify.get_spotify_user_info') as mock_user_info, \
          patch('src.handlers.auth.spotify.httpx.Client') as MockClient:
 
         mock_client_instance = MagicMock()
         MockClient.return_value.__enter__.return_value = mock_client_instance
         mock_client_instance.post.return_value = mock_response
-        mock_client_instance.get.return_value = mock_response
 
+        mock_user_info.return_value = SPOTIFY_USER_INFO
         mock_auth.find_or_create_user_with_platform.return_value = 'mmp_newuser'
         mock_auth.create_session.return_value = 'jwt_token_abc'
 
