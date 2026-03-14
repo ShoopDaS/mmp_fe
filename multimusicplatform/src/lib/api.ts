@@ -85,6 +85,12 @@ class ApiClient {
     });
   }
 
+  async spotifyLogin() {
+    return this.request<{ authUrl: string; state: string }>('/auth/spotify/login', {
+      method: 'POST',
+    });
+  }
+
   // Platform endpoints
   async spotifyConnect() {
     return this.request<{ authUrl: string; state: string }>(
