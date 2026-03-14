@@ -23,6 +23,7 @@ export function QueueProvider({ children }: { children: ReactNode }) {
         tracks,
         currentIndex: Math.min(startIndex, tracks.length - 1),
         loopMode: state.loopMode, // preserve current loop preference
+        shuffle: state.shuffle,   // preserve current shuffle preference
         sourceLabel: sourceLabel ?? null,
       });
     },

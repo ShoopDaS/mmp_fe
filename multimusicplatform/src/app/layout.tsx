@@ -9,8 +9,8 @@ import AppLayout from '@/components/layout/AppLayout';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'MultiMusic Platform',
-  description: 'Your unified music streaming platform',
+  title: 'Unison',
+  description: 'Your music, unified.',
 };
 
 export default function RootLayout({
