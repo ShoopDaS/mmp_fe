@@ -27,13 +27,13 @@ export default function LoginSection() {
   };
 
   return (
-    <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 shadow-2xl">
-      <h2 className="text-2xl font-semibold text-white mb-6 text-center">
+    <div className="bg-surface rounded-2xl p-8 border border-white/5">
+      <h2 className="text-2xl font-semibold text-white mb-6 text-center tracking-tight">
         Sign in to continue
       </h2>
 
       {error && (
-        <div className="mb-4 bg-red-500/20 border border-red-500 text-red-100 px-4 py-3 rounded">
+        <div className="mb-4 bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-lg">
           {error}
         </div>
       )}
@@ -44,23 +44,16 @@ export default function LoginSection() {
           onClick={handleGoogleLogin}
           disabled={isLoading}
         />
-        
-        {/* Future providers */}
+
         <ProviderButton
           provider="microsoft"
           onClick={() => {}}
           disabled={true}
           comingSoon
         />
-        <ProviderButton
-          provider="github"
-          onClick={() => {}}
-          disabled={true}
-          comingSoon
-        />
       </div>
 
-      <p className="mt-6 text-center text-sm text-gray-400">
+      <p className="mt-6 text-center text-sm text-text-secondary">
         By signing in, you agree to our Terms of Service
       </p>
     </div>

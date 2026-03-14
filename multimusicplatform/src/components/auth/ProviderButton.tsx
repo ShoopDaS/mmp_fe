@@ -1,7 +1,9 @@
 'use client';
 
+import { GoogleIcon, MicrosoftIcon } from '@/components/icons/ProviderIcons';
+
 interface ProviderButtonProps {
-  provider: 'google' | 'microsoft' | 'github';
+  provider: 'google' | 'microsoft';
   onClick: () => void;
   disabled?: boolean;
   comingSoon?: boolean;
@@ -10,20 +12,14 @@ interface ProviderButtonProps {
 const providerConfig = {
   google: {
     name: 'Google',
-    icon: '🔍',
+    Icon: GoogleIcon,
     bg: 'bg-white hover:bg-gray-100',
     text: 'text-gray-900',
   },
   microsoft: {
     name: 'Microsoft',
-    icon: '🪟',
+    Icon: MicrosoftIcon,
     bg: 'bg-blue-600 hover:bg-blue-700',
-    text: 'text-white',
-  },
-  github: {
-    name: 'GitHub',
-    icon: '🐙',
-    bg: 'bg-gray-800 hover:bg-gray-900',
     text: 'text-white',
   },
 };
@@ -44,11 +40,11 @@ export default function ProviderButton({
         w-full flex items-center justify-center gap-3 px-6 py-3 rounded-lg
         font-medium transition-all
         ${config.bg} ${config.text}
-        ${disabled || comingSoon ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105'}
+        ${disabled || comingSoon ? 'opacity-40 cursor-not-allowed' : 'hover:opacity-90'}
         shadow-lg
       `}
     >
-      <span className="text-2xl">{config.icon}</span>
+      <config.Icon className="w-5 h-5" />
       <span>
         Continue with {config.name}
         {comingSoon && ' (Coming Soon)'}

@@ -2,7 +2,7 @@
 
 **App name:** Unison (`BRAND.name` in `lib/constants/brand.ts`). A multi-platform music aggregator: users connect Spotify, YouTube, and SoundCloud then search, play, and manage cross-platform playlists from one UI.
 
-**Stack:** Next.js 14, App Router (`src/app/`), TypeScript, Tailwind CSS with CSS variable theming (`--bg-base`, `--accent-color`, etc.), custom player adapter pattern.
+**Stack:** Next.js 15, App Router (`src/app/`), TypeScript, Tailwind CSS with CSS variable theming (`--bg-base`, `--accent-color`, etc.), custom player adapter pattern.
 
 ---
 
