@@ -1,21 +1,12 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQueue } from '@/hooks/useQueue';
 import { useHub } from '@/contexts/HubContext';
 import { apiClient } from '@/lib/api';
-import { CustomTrackItem } from '@/types/playlist';
 import TrackList from '@/components/music/TrackList';
-import {
-  fetchSpotifyOwnedPlaylists,
-  fetchYouTubeOwnedPlaylists,
-  addTrackToSpotifyPlaylist,
-  addTrackToYouTubePlaylist,
-  fetchSpotifyPlaylistTrackUris,
-  fetchYouTubePlaylistVideoIds,
-} from '@/lib/platformHelpers';
 
 interface Track {
   id: string;
@@ -37,8 +28,6 @@ export default function SearchPage() {
   const {
     spotifyToken, youtubeToken,
     loadPlatformTokens,
-    customPlaylists, setCustomPlaylists,
-    playlistTrackIds, setPlaylistTrackIds,
     triggerTogglePlay, isPlaying,
   } = useHub();
 
@@ -46,13 +35,6 @@ export default function SearchPage() {
   const [tracks, setTracks] = useState<Track[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedPlatforms, setSelectedPlatforms] = useState({ spotify: true, soundcloud: false, youtube: true });
-
-  type OwnedPlatformPlaylists = Partial<Record<'spotify' | 'youtube' | 'soundcloud', { id: string; name: string }[] | 'loading'>>;
-  const [ownedPlatformPlaylists, setOwnedPlatformPlaylists] = useState<OwnedPlatformPlaylists>({});
-  const fetchedPlatforms = useRef<Set<'spotify' | 'youtube' | 'soundcloud'>>(new Set());
-
-  const [platformPlaylistTrackIds, setPlatformPlaylistTrackIds] = useState<Record<string, Set<string>>>({});
-  const fetchedPlatformPlaylistTrackIds = useRef<Set<string>>(new Set());
 
   // Protect route
   useEffect(() => {
@@ -131,63 +113,6 @@ export default function SearchPage() {
     queue.playFromList(tracks, index >= 0 ? index : 0, 'Search Results');
   };
 
-  // --- Add-to-playlist handlers (for TrackList dropdown) ---
-
-  const handleRequestPlatformPlaylistTrackIds = useCallback(async (platform: 'spotify' | 'youtube', playlistIds: string[]) => {
-    const unloaded = playlistIds.filter(id => !fetchedPlatformPlaylistTrackIds.current.has(id));
-    if (!unloaded.length) return;
-    await Promise.all(unloaded.map(async (id) => {
-      fetchedPlatformPlaylistTrackIds.current.add(id);
-      try {
-        let trackIds: Set<string> = new Set();
-        if (platform === 'spotify' && spotifyToken) trackIds = await fetchSpotifyPlaylistTrackUris(id, spotifyToken);
-        else if (platform === 'youtube' && youtubeToken) trackIds = await fetchYouTubePlaylistVideoIds(id, youtubeToken);
-        setPlatformPlaylistTrackIds(prev => ({ ...prev, [id]: trackIds }));
-      } catch { fetchedPlatformPlaylistTrackIds.current.delete(id); }
-    }));
-  }, [spotifyToken, youtubeToken]);
-
-  const handleRequestPlatformPlaylists = useCallback(async (platform: 'spotify' | 'youtube' | 'soundcloud') => {
-    if (platform === 'soundcloud' || fetchedPlatforms.current.has(platform)) return;
-    fetchedPlatforms.current.add(platform);
-    setOwnedPlatformPlaylists(prev => ({ ...prev, [platform]: 'loading' }));
-    try {
-      let playlists: { id: string; name: string }[] = [];
-      if (platform === 'spotify' && spotifyToken) playlists = await fetchSpotifyOwnedPlaylists(spotifyToken);
-      else if (platform === 'youtube' && youtubeToken) playlists = await fetchYouTubeOwnedPlaylists(youtubeToken);
-      setOwnedPlatformPlaylists(prev => ({ ...prev, [platform]: playlists }));
-      if (playlists.length) handleRequestPlatformPlaylistTrackIds(platform as 'spotify' | 'youtube', playlists.map(pl => pl.id));
-    } catch { setOwnedPlatformPlaylists(prev => ({ ...prev, [platform]: [] })); fetchedPlatforms.current.delete(platform); }
-  }, [spotifyToken, youtubeToken, handleRequestPlatformPlaylistTrackIds]);
-
-  const handleAddToCustomPlaylist = useCallback(async (track: Track, playlistId: string) => {
-    if (playlistTrackIds[playlistId]?.has(track.id)) return;
-    await apiClient.addTrackToCustomPlaylist(playlistId, {
-      trackId: track.id, platform: track.platform, name: track.name, uri: track.uri,
-      artists: track.artists, albumName: track.album.name, albumImageUrl: track.album.images[0]?.url || '',
-      duration_ms: track.duration_ms, preview_url: track.preview_url || null,
-    });
-    setCustomPlaylists(prev => prev.map(p => p.playlistId === playlistId ? { ...p, trackCount: p.trackCount + 1 } : p));
-    setPlaylistTrackIds(prev => ({ ...prev, [playlistId]: new Set(prev[playlistId] || []).add(track.id) }));
-  }, [playlistTrackIds, setCustomPlaylists, setPlaylistTrackIds]);
-
-  const handleAddToPlatformPlaylist = useCallback(async (track: Track, playlistId: string) => {
-    if (platformPlaylistTrackIds[playlistId]?.has(track.uri)) return;
-    if (track.platform === 'spotify' && spotifyToken) await addTrackToSpotifyPlaylist(track.uri, playlistId, spotifyToken);
-    else if (track.platform === 'youtube' && youtubeToken) await addTrackToYouTubePlaylist(track.uri, playlistId, youtubeToken);
-    setPlatformPlaylistTrackIds(prev => ({ ...prev, [playlistId]: new Set(prev[playlistId] || []).add(track.uri) }));
-  }, [spotifyToken, youtubeToken, platformPlaylistTrackIds]);
-
-  const handleRequestPlaylistTrackIds = useCallback(async (playlistIds: string[]) => {
-    const unloaded = playlistIds.filter(id => !playlistTrackIds[id]);
-    if (!unloaded.length) return;
-    await Promise.all(unloaded.map(async (id) => {
-      try {
-        const res = await apiClient.getCustomPlaylistTracks(id);
-        if (res.data?.tracks) setPlaylistTrackIds(prev => ({ ...prev, [id]: new Set(res.data!.tracks.map((t: CustomTrackItem) => t.trackId)) }));
-      } catch {}
-    }));
-  }, [playlistTrackIds, setPlaylistTrackIds]);
 
   // --- Render ---
 
@@ -283,19 +208,8 @@ export default function SearchPage() {
           mode="search"
           onPlay={handlePlayTrack}
           onTogglePlay={triggerTogglePlay}
-          onAddToQueue={(track) => queue.addToQueue([track])}
-          onPlayNext={queue.playNext}
           currentTrack={currentTrack as Track | null}
           isPlaying={isPlaying}
-          customPlaylists={customPlaylists}
-          ownedPlatformPlaylists={ownedPlatformPlaylists}
-          onAddToCustomPlaylist={handleAddToCustomPlaylist}
-          onAddToPlatformPlaylist={handleAddToPlatformPlaylist}
-          onRequestPlatformPlaylists={handleRequestPlatformPlaylists}
-          playlistTrackIds={playlistTrackIds}
-          onRequestPlaylistTrackIds={handleRequestPlaylistTrackIds}
-          platformPlaylistTrackIds={platformPlaylistTrackIds}
-          onRequestPlatformPlaylistTrackIds={handleRequestPlatformPlaylistTrackIds}
         />
       )}
 

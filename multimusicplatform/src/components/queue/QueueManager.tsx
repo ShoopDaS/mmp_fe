@@ -2,53 +2,19 @@
 
 import { useState, useRef, useCallback } from 'react';
 import { useQueue } from '@/hooks/useQueue';
-import { CustomPlaylist } from '@/types/playlist';
-import { apiClient } from '@/lib/api';
+import { useContextMenu } from '@/contexts/ContextMenuContext';
 import { Track } from '@/lib/player-adapters/IPlayerAdapter';
-import { SpotifyIcon, SoundCloudIcon, YouTubeIcon, DefaultMusicIcon } from '@/components/icons/BrandIcons';
 
-interface QueueManagerProps {
-  customPlaylists: CustomPlaylist[];
-}
-
-export default function QueueManager({ customPlaylists }: QueueManagerProps) {
-  const { tracks, currentIndex, sourceLabel, jumpTo, removeFromQueue, moveTrack, clearQueue } = useQueue();
+export default function QueueManager() {
+  const { tracks, currentIndex, jumpTo, removeFromQueue, moveTrack, clearQueue } = useQueue();
+  const { openMenu } = useContextMenu();
 
   // Drag-and-drop state
   const [dragVisualIndex, setDragVisualIndex] = useState<number | null>(null);
   const [dragOverVisualIndex, setDragOverVisualIndex] = useState<number | null>(null);
   const dragNodeRef = useRef<HTMLDivElement | null>(null);
 
-  // Add-to-playlist dropdown state
-  const [addToPlaylistTrackIndex, setAddToPlaylistTrackIndex] = useState<number | null>(null);
-  const [addFeedback, setAddFeedback] = useState<{ trackIndex: number; playlistId: string } | null>(null);
-  const addMenuRef = useRef<HTMLDivElement>(null);
-
   const upcomingTracks = currentIndex >= 0 ? tracks.slice(currentIndex + 1) : [];
-
-  const platformMeta = (platform: string) => {
-    switch (platform) {
-      case 'spotify': return { icon: <SpotifyIcon className="w-3.5 h-3.5" />, color: 'text-spotify', bg: 'bg-spotify/20 border-spotify/30' };
-      case 'youtube': return { icon: <YouTubeIcon className="w-3.5 h-3.5" />, color: 'text-youtube', bg: 'bg-youtube/20 border-youtube/30' };
-      case 'soundcloud': return { icon: <SoundCloudIcon className="w-3.5 h-3.5" />, color: 'text-soundcloud', bg: 'bg-soundcloud/20 border-soundcloud/30' };
-      default: return { icon: <DefaultMusicIcon className="w-3.5 h-3.5" />, color: 'text-accent', bg: 'bg-accent/20 border-accent/30' };
-    }
-  };
-
-  const handleAddToPlaylist = async (track: Track, playlistId: string, trackIndex: number) => {
-    try {
-      await apiClient.addTrackToCustomPlaylist(playlistId, {
-        trackId: track.id, platform: track.platform, name: track.name, uri: track.uri,
-        artists: track.artists, albumName: track.album.name, albumImageUrl: track.album.images[0]?.url || '',
-        duration_ms: track.duration_ms, preview_url: track.preview_url || null,
-      });
-      setAddFeedback({ trackIndex, playlistId });
-      setTimeout(() => setAddFeedback(null), 1500);
-    } catch (err) {
-      console.error('Failed to add track to playlist:', err);
-    }
-    setAddToPlaylistTrackIndex(null);
-  };
 
   // --- Drag-and-drop handlers ---
   const handleDragStart = useCallback((e: React.DragEvent<HTMLDivElement>, visualIndex: number) => {
@@ -137,8 +103,6 @@ export default function QueueManager({ customPlaylists }: QueueManagerProps) {
           const queueIndex = currentIndex + 1 + i;
           const isDragging = dragVisualIndex === i;
           const isDragOver = dragOverVisualIndex === i;
-          const showAddDropdown = addToPlaylistTrackIndex === i;
-          const justAdded = addFeedback?.trackIndex === i;
 
           return (
             <div
@@ -170,41 +134,20 @@ export default function QueueManager({ customPlaylists }: QueueManagerProps) {
 
               {/* Actions */}
               <div className="flex items-center gap-0.5 shrink-0">
-                <div className="relative" ref={showAddDropdown ? addMenuRef : undefined}>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setAddToPlaylistTrackIndex(showAddDropdown ? null : i); }}
-                    className={`w-7 h-7 flex items-center justify-center transition-all ${justAdded ? 'text-green-400 opacity-100' : 'opacity-0 group-hover:opacity-70 text-muted hover:text-cream'}`}
-                    title="Add to playlist"
-                  >
-                    {justAdded ? (
-                      <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                    ) : (
-                      <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
-                    )}
-                  </button>
-                  {showAddDropdown && (
-                    <div className="absolute right-0 top-full mt-1 w-48 bg-raised border border-warm shadow-2xl z-50 overflow-hidden">
-                      <p className="px-3 py-2 text-[9px] font-condensed tracking-[0.15em] uppercase text-muted border-b border-warm">Add to playlist</p>
-                      {customPlaylists.length === 0 ? (
-                        <p className="px-3 py-3 text-[11px] text-muted text-center italic">No playlists yet</p>
-                      ) : (
-                        <div className="max-h-48 overflow-y-auto">
-                          {customPlaylists.map((pl) => (
-                            <button key={pl.playlistId} onClick={(e) => { e.stopPropagation(); handleAddToPlaylist(track, pl.playlistId, i); }} className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-cream hover:bg-warm transition-colors">
-                              <span className="truncate text-left flex-1">{pl.name}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
+                {/* Kebab — opens global ContextMenu */}
+                <button
+                  onClick={(e) => { e.stopPropagation(); openMenu(e, 'search', track as any); }}
+                  className="w-7 h-7 flex items-center justify-center opacity-0 group-hover:opacity-70 text-muted hover:text-amber transition-all shrink-0"
+                  title="More options"
+                >
+                  ⋮
+                </button>
 
-                {/* Remove */}
+                {/* Remove from queue */}
                 <button
                   onClick={(e) => { e.stopPropagation(); removeFromQueue(queueIndex); }}
                   className="w-7 h-7 flex items-center justify-center opacity-0 group-hover:opacity-70 text-muted hover:text-red-400 transition-all shrink-0"
-                  title="Remove"
+                  title="Remove from queue"
                 >
                   <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>

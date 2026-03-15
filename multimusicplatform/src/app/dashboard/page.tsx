@@ -3,11 +3,13 @@
 import { Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import { useHub } from '@/contexts/HubContext';
 
 function DashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, isLoading: authLoading, isAuthenticated } = useAuth();
+  const { spotifyToken, youtubeToken, soundcloudToken } = useHub();
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -69,9 +71,27 @@ function DashboardContent() {
       {/* Platform status */}
       <div className="mb-4">
         <h2 className="font-condensed text-[9px] tracking-[0.22em] uppercase text-muted mb-4">Platform Status</h2>
-      </div>
-      <div className="text-muted text-sm">
-        Connect your music platforms from the <button onClick={() => router.push('/profile')} className="text-amber hover:underline">Profile</button> page to get started.
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { key: 'spotify',    label: 'Spotify',    token: spotifyToken,    color: 'text-spotify',    border: 'border-spotify/30' },
+            { key: 'youtube',    label: 'YouTube',    token: youtubeToken,    color: 'text-youtube',    border: 'border-youtube/30' },
+            { key: 'soundcloud', label: 'SoundCloud', token: soundcloudToken, color: 'text-soundcloud', border: 'border-soundcloud/30' },
+          ].map(({ key, label, token, color, border }) => (
+            <div key={key} className={`bg-card border p-4 flex items-center gap-3 ${token ? border : 'border-warm'}`}>
+              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${token ? 'bg-current ' + color : 'bg-muted'}`} />
+              <div className="min-w-0">
+                <p className={`font-condensed text-[10px] tracking-widest uppercase ${token ? color : 'text-muted'}`}>{label}</p>
+                <p className="text-muted text-[11px] mt-0.5">{token ? 'Connected' : 'Not connected'}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+        {(!spotifyToken || !youtubeToken || !soundcloudToken) && (
+          <p className="text-muted text-xs mt-3">
+            Connect missing platforms from the{' '}
+            <button onClick={() => router.push('/profile')} className="text-amber hover:underline">Profile</button> page.
+          </p>
+        )}
       </div>
     </div>
   );

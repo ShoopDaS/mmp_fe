@@ -165,7 +165,6 @@ export default function LibraryPage() {
   const {
     activePlaylist, playlistTracks, isLoadingPlaylistTracks,
     customPlaylists, setCustomPlaylists,
-    playlistTrackIds, setPlaylistTrackIds,
     triggerTogglePlay, isPlaying,
   } = useHub();
   const queue = useQueue();
@@ -222,16 +221,6 @@ export default function LibraryPage() {
     apiClient.removeTrackFromCustomPlaylist(activePlaylist.id, trackId);
   }, [activePlaylist, isStave, setCustomPlaylists]);
 
-  const handleAddToCustomPlaylist = useCallback(async (track: any, playlistId: string) => {
-    if (playlistTrackIds[playlistId]?.has(track.id)) return;
-    await apiClient.addTrackToCustomPlaylist(playlistId, {
-      trackId: track.id, platform: track.platform, name: track.name, uri: track.uri,
-      artists: track.artists, albumName: track.album.name, albumImageUrl: track.album.images[0]?.url || '',
-      duration_ms: track.duration_ms, preview_url: track.preview_url || null,
-    });
-    setCustomPlaylists((prev: CustomPlaylist[]) => prev.map(p => p.playlistId === playlistId ? { ...p, trackCount: p.trackCount + 1 } : p));
-    setPlaylistTrackIds((prev: any) => ({ ...prev, [playlistId]: new Set(prev[playlistId] || []).add(track.id) }));
-  }, [playlistTrackIds, setCustomPlaylists, setPlaylistTrackIds]);
 
   if (!activePlaylist) {
     return <EmptyLibraryState />;
@@ -273,16 +262,11 @@ export default function LibraryPage() {
             mode={mode}
             onPlay={handlePlayTrack}
             onTogglePlay={triggerTogglePlay}
-            onAddToQueue={(track: any) => queue.addToQueue([track])}
-            onPlayNext={queue.playNext}
             currentTrack={currentTrack as any}
             isPlaying={isPlaying}
             isCustomPlaylist={isStave}
             onRemoveFromPlaylist={isStave ? handleRemoveFromPlaylist : undefined}
             onReorderTracks={isStave ? handleReorderTracks : undefined}
-            customPlaylists={customPlaylists}
-            onAddToCustomPlaylist={handleAddToCustomPlaylist}
-            playlistTrackIds={playlistTrackIds}
           />
         </div>
       )}
