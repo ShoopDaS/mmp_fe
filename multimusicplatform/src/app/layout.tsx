@@ -3,7 +3,11 @@ import './globals.css';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { QueueProvider } from '@/contexts/QueueContext';
 import { HubProvider } from '@/contexts/HubContext';
+import { ToastProvider } from '@/contexts/ToastContext';
+import { ContextMenuProvider } from '@/contexts/ContextMenuContext';
 import AppLayout from '@/components/layout/AppLayout';
+import ContextMenu from '@/components/ui/ContextMenu';
+import Toast from '@/components/ui/Toast';
 
 export const metadata: Metadata = {
   title: 'Stave',
@@ -28,9 +32,15 @@ export default function RootLayout({
         <AuthProvider>
           <QueueProvider>
             <HubProvider>
-              <AppLayout>
-                {children}
-              </AppLayout>
+              <ToastProvider>
+                <ContextMenuProvider>
+                  <AppLayout>
+                    {children}
+                  </AppLayout>
+                  <ContextMenu />
+                  <Toast />
+                </ContextMenuProvider>
+              </ToastProvider>
             </HubProvider>
           </QueueProvider>
         </AuthProvider>
