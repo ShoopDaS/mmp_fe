@@ -297,3 +297,65 @@ export async function fetchSoundCloudPlaylistTracks(playlistId: string, token: s
     return [];
   }
 }
+
+// ========== SoundCloud Owned Playlist Helpers ==========
+
+/** Fetches the current user's own SoundCloud playlists (sets). */
+export async function fetchSoundCloudOwnedPlaylists(token: string): Promise<{ id: string; name: string }[]> {
+  try {
+    const res = await fetch('https://api.soundcloud.com/me/playlists?limit=50', {
+      headers: { Authorization: `OAuth ${token}`, Accept: 'application/json; charset=utf-8' },
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (Array.isArray(data) ? data : []).map((pl: any) => ({
+      id: String(pl.id),
+      name: pl.title || 'Untitled Playlist',
+    }));
+  } catch { return []; }
+}
+
+/**
+ * Returns a Set of numeric track IDs (as strings) already in a SoundCloud playlist.
+ * Used for duplicate detection. The key matches track.id.replace('soundcloud-', '').
+ */
+export async function fetchSoundCloudPlaylistTrackIds(playlistId: string, token: string): Promise<Set<string>> {
+  try {
+    const res = await fetch(
+      `https://api.soundcloud.com/playlists/${playlistId}?representation=compact`,
+      { headers: { Authorization: `OAuth ${token}`, Accept: 'application/json; charset=utf-8' } },
+    );
+    if (!res.ok) return new Set();
+    const data = await res.json();
+    return new Set((data.tracks || []).map((t: any) => String(t.id)));
+  } catch { return new Set(); }
+}
+
+/**
+ * Adds a track to a SoundCloud playlist (set).
+ * SoundCloud requires a full PUT with the entire tracks array, so we fetch first then append.
+ */
+export async function addTrackToSoundCloudPlaylist(
+  scTrackId: string,
+  playlistId: string,
+  token: string,
+): Promise<void> {
+  // Fetch current playlist to get existing track IDs
+  const getRes = await fetch(
+    `https://api.soundcloud.com/playlists/${playlistId}?representation=compact`,
+    { headers: { Authorization: `OAuth ${token}`, Accept: 'application/json; charset=utf-8' } },
+  );
+  if (!getRes.ok) throw new Error(`SoundCloud fetch playlist error ${getRes.status}`);
+  const data = await getRes.json();
+  const existingTracks = (data.tracks || []).map((t: any) => ({ id: Number(t.id) }));
+
+  const putRes = await fetch(`https://api.soundcloud.com/playlists/${playlistId}`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `OAuth ${token}`,
+      'Content-Type': 'application/json; charset=utf-8',
+    },
+    body: JSON.stringify({ playlist: { tracks: [...existingTracks, { id: Number(scTrackId) }] } }),
+  });
+  if (!putRes.ok) throw new Error(`SoundCloud update playlist error ${putRes.status}`);
+}

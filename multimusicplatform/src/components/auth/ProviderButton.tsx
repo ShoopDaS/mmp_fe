@@ -14,20 +14,14 @@ const providerConfig = {
   google: {
     name: 'Google',
     Icon: GoogleIcon,
-    bg: 'bg-white hover:bg-gray-100',
-    text: 'text-gray-900',
   },
   microsoft: {
     name: 'Microsoft',
     Icon: MicrosoftIcon,
-    bg: 'bg-blue-600 hover:bg-blue-700',
-    text: 'text-white',
   },
   spotify: {
     name: 'Spotify',
     Icon: SpotifyIcon,
-    bg: 'bg-spotify hover:bg-[#1aa34a]',
-    text: 'text-black',
   },
 };
 
@@ -44,18 +38,19 @@ export default function ProviderButton({
       onClick={onClick}
       disabled={disabled || comingSoon}
       className={`
-        w-full flex items-center justify-center gap-3 px-6 py-3 rounded-lg
-        font-medium transition-all
-        ${config.bg} ${config.text}
-        ${disabled || comingSoon ? 'opacity-40 cursor-not-allowed' : 'hover:opacity-90'}
-        shadow-lg
+        w-full px-5 py-3.5 mb-3 border border-warm bg-card text-cream
+        font-condensed text-[13px] tracking-[0.08em]
+        hover:bg-raised transition-colors flex items-center gap-3.5
+        ${disabled || comingSoon ? 'opacity-40 cursor-not-allowed' : ''}
       `}
     >
       <config.Icon className="w-5 h-5" />
-      <span>
-        Continue with {config.name}
-        {comingSoon && ' (Coming Soon)'}
-      </span>
+      <span className="flex-1 text-left">{config.name}</span>
+      {comingSoon ? (
+        <span className="font-condensed text-[9px] tracking-[0.1em] uppercase px-1.5 py-0.5 bg-warm text-muted">Soon</span>
+      ) : (
+        <span className="font-condensed text-[9px] tracking-[0.1em] uppercase px-1.5 py-0.5 bg-amber-dim text-amber">Active</span>
+      )}
     </button>
   );
 }

@@ -5,8 +5,6 @@ import { useEffect, useState, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import LoginSection from '@/components/auth/LoginSection';
-import { BRAND } from '@/lib/constants/brand';
-import { SpotifyIcon, SoundCloudIcon, YouTubeIcon } from '@/components/icons/BrandIcons';
 
 function HomeContent() {
   const router = useRouter();
@@ -16,7 +14,6 @@ function HomeContent() {
   const hasProcessedSession = useRef(false);
 
   useEffect(() => {
-    // Handle OAuth callback with session token
     const sessionToken = searchParams?.get('session');
     const errorParam = searchParams?.get('error');
 
@@ -26,7 +23,7 @@ function HomeContent() {
         .then(() => {
           router.replace('/dashboard');
         })
-        .catch((err) => {
+        .catch(() => {
           setError('Login failed. Please try again.');
           hasProcessedSession.current = false;
         });
@@ -45,8 +42,8 @@ function HomeContent() {
 
   if (isLoading || (searchParams?.get('session') && !error)) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-base">
-        <div className="text-xl text-text-secondary animate-pulse">Loading...</div>
+      <div className="h-screen flex items-center justify-center bg-bg">
+        <div className="text-xl text-muted animate-pulse">Loading...</div>
       </div>
     );
   }
@@ -56,70 +53,69 @@ function HomeContent() {
   }
 
   return (
-    <main className="min-h-screen bg-base relative overflow-hidden">
-      {/* Subtle radial glow for atmosphere */}
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          background: 'radial-gradient(ellipse at 50% 40%, rgba(99,102,241,0.07) 0%, transparent 70%)',
-        }}
-      />
+    <div className="h-screen flex bg-bg">
+      {/* Left: Branding */}
+      <div className="flex-1 flex flex-col justify-between p-14 border-r border-warm">
+        {/* Top: Brand */}
+        <div className="flex items-center gap-3.5">
+          <svg width="48" height="34" viewBox="0 0 48 34" fill="none" className="text-amber">
+            <rect x="1" y="1" width="46" height="32" rx="3" stroke="currentColor" strokeWidth="2" />
+            <line x1="7" y1="33" x2="41" y2="33" stroke="currentColor" strokeWidth="2" />
+            <circle cx="16" cy="16" r="5" stroke="currentColor" strokeWidth="2" />
+            <circle cx="16" cy="16" r="1.5" fill="currentColor" />
+            <circle cx="32" cy="16" r="5" stroke="currentColor" strokeWidth="2" />
+            <circle cx="32" cy="16" r="1.5" fill="currentColor" />
+          </svg>
+          <span className="font-display text-[28px] text-amber tracking-wide">Stave</span>
+        </div>
 
-      {/* Split layout */}
-      <div className="relative z-10 min-h-screen grid grid-cols-1 md:grid-cols-2 gap-0">
-
-        {/* Left panel — branding */}
-        <div className="flex flex-col items-center justify-center px-8 py-16 md:py-0">
-          <div className="max-w-sm w-full space-y-6">
-            <div>
-              <h1 className="text-5xl font-bold text-white tracking-tight flex items-center gap-3">
-                <span className="text-accent text-4xl">{BRAND.logoIcon}</span>
-                {BRAND.name}
-              </h1>
-              <p className="text-xl text-text-secondary mt-3">Your music, unified.</p>
-            </div>
-
-            {/* Platform pills */}
-            <div>
-              <p className="text-xs uppercase tracking-wider font-semibold text-text-secondary mb-3">Works with</p>
-              <div className="flex flex-wrap gap-2">
-                <span className="flex items-center gap-2 px-3 py-1.5 bg-surface border border-white/5 rounded-full text-sm text-text-secondary">
-                  <SpotifyIcon className="w-4 h-4 text-spotify" /> Spotify
-                </span>
-                <span className="flex items-center gap-2 px-3 py-1.5 bg-surface border border-white/5 rounded-full text-sm text-text-secondary">
-                  <YouTubeIcon className="w-4 h-4 text-youtube" /> YouTube
-                </span>
-                <span className="flex items-center gap-2 px-3 py-1.5 bg-surface border border-white/5 rounded-full text-sm text-text-secondary">
-                  <SoundCloudIcon className="w-4 h-4 text-soundcloud" /> SoundCloud
-                </span>
-              </div>
-            </div>
+        {/* Center: Hero */}
+        <div className="py-10">
+          <div className="font-condensed text-[11px] tracking-[0.3em] uppercase text-red-400 mb-6 flex items-center gap-2.5">
+            Multi-platform music
+            <span className="block w-10 h-px bg-red-400 opacity-70" />
+          </div>
+          <h1 className="font-display text-[68px] leading-none text-cream tracking-tight">
+            All your<br/>
+            <em className="italic text-amber">music,</em><br/>
+            <span style={{color:'transparent', WebkitTextStroke:'1.5px var(--amber)'}}>one side.</span>
+          </h1>
+          <p className="text-muted text-[15px] leading-[1.85] mt-7 max-w-[400px]">
+            Stave connects Spotify, YouTube, and SoundCloud into a single seamless listening experience. Search everything. Build playlists without borders.
+          </p>
+          <div className="flex gap-2.5 mt-10 flex-wrap">
+            {['Spotify', 'YouTube', 'SoundCloud'].map(name => (
+              <span key={name} className="font-condensed text-[10px] tracking-[0.12em] uppercase px-3 py-1.5 border border-warm text-muted">
+                {name}
+              </span>
+            ))}
           </div>
         </div>
 
-        {/* Right panel — login */}
-        <div className="flex flex-col items-center justify-center px-8 pb-16 md:py-0">
-          <div className="max-w-sm w-full space-y-6">
-            {/* Error display */}
-            {error && (
-              <div className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-lg">
-                {error}
-              </div>
-            )}
-
-            <LoginSection />
-          </div>
-        </div>
+        {/* Bottom: Quote */}
+        <p className="font-display italic text-[15px] text-muted leading-relaxed pt-8 border-t border-warm max-w-[360px]">
+          &ldquo;The music is not in the platform.<br/>It never was.&rdquo;
+        </p>
       </div>
-    </main>
+
+      {/* Right: Login */}
+      <div className="flex-1 flex flex-col items-center justify-center p-14">
+        {error && (
+          <div className="w-full max-w-[360px] mb-6 bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 text-sm">
+            {error}
+          </div>
+        )}
+        <LoginSection />
+      </div>
+    </div>
   );
 }
 
 export default function HomePage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-base">
-        <div className="text-xl text-text-secondary animate-pulse">Loading...</div>
+      <div className="h-screen flex items-center justify-center bg-bg">
+        <div className="text-xl text-muted animate-pulse">Loading...</div>
       </div>
     }>
       <HomeContent />

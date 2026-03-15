@@ -1,10 +1,10 @@
 export const BRAND = {
-  name: 'Unison',     // Your new app name
-  logoIcon: '🎧',      // You can swap this with an SVG later
+  name: 'Stave',
+  logoIcon: '📼',
   colors: {
-    accent: '#6366f1', // The new Indigo accent color
+    accent: '#e0943a',
     spotify: '#1DB954',
-    soundcloud: '#FF5500',
-    youtube: '#FF0000',
-  }
+    soundcloud: '#FF6600',
+    youtube: '#FF4040',
+  },
 };

@@ -100,7 +100,7 @@ function ProfileContent() {
 
   if (authLoading || !user) {
     return (
-      <div className="flex h-full items-center justify-center text-text-secondary">
+      <div className="flex h-full items-center justify-center text-muted">
         <div className="text-xl animate-pulse">Loading...</div>
       </div>
     );
@@ -110,16 +110,16 @@ function ProfileContent() {
   const youtubeConnected = platforms.some(p => p.platform === 'youtube');
   const soundcloudConnected = platforms.some(p => p.platform === 'soundcloud'); 
   
-  // Check if all platforms are connected
   const allConnected = spotifyConnected && youtubeConnected && soundcloudConnected;
 
   return (
-    <div className="max-w-6xl mx-auto px-8 py-10">
-      <h1 className="text-4xl font-bold text-white mb-10 tracking-tight">Profile Settings</h1>
+    <div className="max-w-[920px] mx-auto px-12 py-10">
+      <h1 className="font-display text-[42px] text-cream mb-2">Profile</h1>
+      <p className="text-sub text-[15px] mb-10 leading-relaxed">Manage your account and connected platforms.</p>
 
       {/* Messages */}
       {message && (
-        <div className={`mb-8 px-4 py-3 rounded-lg ${
+        <div className={`mb-8 px-4 py-3 ${
           message.type === 'success' 
             ? 'bg-green-500/10 border border-green-500/30 text-green-400'
             : 'bg-red-500/10 border border-red-500/30 text-red-400'
@@ -129,44 +129,44 @@ function ProfileContent() {
       )}
 
       {/* Profile Info & Auth side-by-side */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
         {/* User Info */}
-        <div className="bg-surface rounded-2xl p-8 border border-white/5 shadow-sm">
-          <h2 className="text-xl font-semibold text-white mb-6">Account Information</h2>
-          <div className="space-y-6">
+        <div className="bg-card border border-warm p-6">
+          <h2 className="font-condensed text-[9px] tracking-[0.22em] uppercase text-muted mb-5">Account Information</h2>
+          <div className="space-y-5">
             <div>
-              <label className="text-xs uppercase tracking-wider font-semibold text-text-secondary">User ID</label>
-              <p className="text-white font-mono mt-1">{user.userId}</p>
+              <label className="font-condensed text-[9px] tracking-[0.2em] uppercase text-muted mb-1 block">User ID</label>
+              <p className="text-[14px] text-cream font-mono">{user.userId}</p>
             </div>
             <div>
-              <label className="text-xs uppercase tracking-wider font-semibold text-text-secondary">Display Name</label>
-              <p className="text-white mt-1">{user.displayName}</p>
+              <label className="font-condensed text-[9px] tracking-[0.2em] uppercase text-muted mb-1 block">Display Name</label>
+              <p className="text-[14px] text-cream">{user.displayName}</p>
             </div>
             <div>
-              <label className="text-xs uppercase tracking-wider font-semibold text-text-secondary">Email</label>
-              <p className="text-white mt-1">{user.email}</p>
+              <label className="font-condensed text-[9px] tracking-[0.2em] uppercase text-muted mb-1 block">Email</label>
+              <p className="text-[14px] text-cream">{user.email}</p>
             </div>
             <div>
-              <label className="text-xs uppercase tracking-wider font-semibold text-text-secondary">Primary Auth</label>
-              <p className="text-white capitalize mt-1">{user.primaryAuthProvider}</p>
+              <label className="font-condensed text-[9px] tracking-[0.2em] uppercase text-muted mb-1 block">Primary Auth</label>
+              <p className="text-[14px] text-cream capitalize">{user.primaryAuthProvider}</p>
             </div>
           </div>
         </div>
 
         {/* Linked Auth Providers */}
-        <div className="bg-surface rounded-2xl p-8 border border-white/5 shadow-sm">
-          <h2 className="text-xl font-semibold text-white mb-6">Linked Accounts</h2>
-          <div className="space-y-4">
+        <div className="bg-card border border-warm p-6">
+          <h2 className="font-condensed text-[9px] tracking-[0.22em] uppercase text-muted mb-5">Linked Accounts</h2>
+          <div className="space-y-3">
             {authProviders.map((provider) => (
               <div
                 key={provider.provider}
-                className="flex items-center justify-between p-5 bg-surface-hover rounded-xl border border-white/5"
+                className="flex items-center justify-between p-4 border border-warm"
               >
                 <div>
-                  <p className="text-white font-semibold capitalize">{provider.provider}</p>
-                  <p className="text-sm text-text-secondary mt-0.5">{provider.email}</p>
+                  <p className="text-cream text-[14px] font-semibold capitalize">{provider.provider}</p>
+                  <p className="text-muted text-[12px] mt-0.5">{provider.email}</p>
                 </div>
-                <span className="px-3 py-1 bg-green-500/10 border border-green-500/20 text-green-400 text-sm rounded-full font-medium">
+                <span className="font-condensed text-[9px] tracking-[0.1em] uppercase px-2 py-1 bg-green-500/10 border border-green-500/20 text-green-400">
                   ✓ Linked
                 </span>
               </div>
@@ -175,13 +175,13 @@ function ProfileContent() {
         </div>
       </div>
 
-      <hr className="border-white/10 mb-12" />
+      <hr className="border-warm mb-10" />
 
       {/* Connected Platforms */}
       {platforms.length > 0 && (
-        <div className="mb-12">
-          <h2 className="text-xl font-semibold text-white mb-6">Connected Music Platforms</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="mb-10">
+          <h2 className="font-condensed text-[9px] tracking-[0.22em] uppercase text-muted mb-5">Connected Platforms</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {platforms.map((platform) => (
               <PlatformCard
                 key={platform.platform}
@@ -194,19 +194,19 @@ function ProfileContent() {
       )}
 
       {/* Connect New Platform */}
-      <div className="mb-12">
-        <h2 className="text-xl font-semibold text-white mb-6">
+      <div className="mb-10">
+        <h2 className="font-condensed text-[9px] tracking-[0.22em] uppercase text-muted mb-5">
           {platforms.length === 0 ? 'Connect Your Music' : 'Add More Platforms'}
         </h2>
         
         {allConnected ? (
-          <div className="bg-surface rounded-2xl p-8 border border-white/5 shadow-sm text-center">
-            <span className="text-4xl mb-3 block">🎉</span>
-            <p className="text-white font-medium text-lg">All platforms are connected</p>
-            <p className="text-text-secondary text-sm mt-1">You have linked all available music services.</p>
+          <div className="bg-card border border-warm p-6 text-center">
+            <span className="text-3xl mb-2 block">🎉</span>
+            <p className="text-cream font-medium">All platforms connected</p>
+            <p className="text-muted text-sm mt-1">You have linked all available music services.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {!spotifyConnected && (
               <ConnectButton 
                 platform="spotify" 
@@ -239,7 +239,7 @@ function ProfileContent() {
 export default function ProfilePage() {
   return (
     <Suspense fallback={
-      <div className="flex h-full items-center justify-center text-text-secondary">
+      <div className="flex h-full items-center justify-center text-muted">
         <div className="text-xl animate-pulse">Loading...</div>
       </div>
     }>

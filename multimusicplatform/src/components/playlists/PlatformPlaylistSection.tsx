@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { apiClient } from '@/lib/api';
 import { UnifiedPlaylist, CustomPlaylist } from '@/types/playlist';
 import PlaylistItem from './PlaylistItem';
-import { SpotifyIcon, YouTubeIcon, SoundCloudIcon } from '@/components/icons/BrandIcons';
 
 interface PlatformPlaylistSectionProps {
   platform: 'spotify' | 'youtube' | 'soundcloud';
@@ -17,9 +16,9 @@ interface PlatformPlaylistSectionProps {
 }
 
 const platformConfig = {
-  spotify: { name: 'Spotify', color: 'text-spotify', bg: 'bg-spotify/10' },
-  youtube: { name: 'YouTube Music', color: 'text-youtube', bg: 'bg-youtube/10' },
-  soundcloud: { name: 'SoundCloud', color: 'text-soundcloud', bg: 'bg-soundcloud/10' },
+  spotify: { name: 'Spotify', bgColor: 'bg-spotify' },
+  youtube: { name: 'YouTube Music', bgColor: 'bg-youtube' },
+  soundcloud: { name: 'SoundCloud', bgColor: 'bg-soundcloud' },
 };
 
 export default function PlatformPlaylistSection({
@@ -38,15 +37,6 @@ export default function PlatformPlaylistSection({
   const [error, setError] = useState<string | null>(null);
 
   const config = platformConfig[platform];
-
-  const renderIcon = () => {
-    const className = `w-5 h-5 ${config.color}`;
-    switch (platform) {
-      case 'spotify': return <SpotifyIcon className={className} />;
-      case 'youtube': return <YouTubeIcon className={className} />;
-      case 'soundcloud': return <SoundCloudIcon className={className} />;
-    }
-  };
 
   const fetchPlaylists = useCallback(async () => {
     setIsLoading(true);
@@ -100,39 +90,32 @@ export default function PlatformPlaylistSection({
 
   return (
     <div className="mb-1">
-      <button
+      <div
+        className="flex items-center justify-between px-4 py-2 cursor-pointer"
         onClick={() => setIsExpanded((prev) => !prev)}
-        className="w-full flex items-center justify-between px-5 py-2.5 hover:bg-white/5 transition-colors group"
       >
-        <div className="flex items-center gap-3">
-          <svg 
-            className={`w-3 h-3 text-text-secondary transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} 
-            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-          </svg>
-          <div className="flex items-center gap-2">
-            {renderIcon()}
-            <span className="font-semibold text-sm text-white/90 group-hover:text-white transition-colors">
-              {config.name}
-            </span>
-          </div>
-        </div>
-        {hasFetched && (
-          <span className="text-[11px] font-medium text-text-secondary bg-surface-hover px-2 py-0.5 rounded-full">
-            {playlists.length}
+        <div className="flex items-center gap-2">
+          <div className={`w-1.5 h-1.5 rounded-full ${config.bgColor}`} />
+          <span className="font-condensed text-[9px] tracking-[0.2em] uppercase text-muted">
+            {config.name}
           </span>
-        )}
-      </button>
+        </div>
+        <div className="flex items-center gap-2">
+          {hasFetched && (
+            <span className="text-muted text-[10px]">{playlists.length}</span>
+          )}
+          <span className="text-muted text-[10px]">{isExpanded ? '▾' : '▸'}</span>
+        </div>
+      </div>
 
       {isExpanded && (
-        <div className="px-3 pb-2 mt-1 space-y-0.5">
+        <div className="pb-2 mt-1 space-y-0.5">
           {isLoading && !hasFetched && (
-            <div className="px-4 py-3 text-xs text-text-secondary animate-pulse">Loading playlists...</div>
+            <div className="px-4 py-3 text-muted text-xs animate-pulse">Loading playlists...</div>
           )}
-          {error && <div className="px-4 py-2 text-xs text-red-400">{error}</div>}
+          {error && <div className="px-4 py-2 text-red-400 text-xs">{error}</div>}
           {hasFetched && playlists.length === 0 && !error && (
-            <div className="px-4 py-3 text-xs text-text-secondary italic">No playlists found</div>
+            <div className="px-4 py-3 text-muted text-xs italic">No playlists found</div>
           )}
 
           {playlists.map((playlist) => (

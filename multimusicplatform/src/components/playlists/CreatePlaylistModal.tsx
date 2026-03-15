@@ -59,38 +59,33 @@ export default function CreatePlaylistModal({ isOpen, onClose, onCreate }: Creat
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center">
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+    <div className="fixed inset-0 z-[500] bg-[#130d07]/85 flex items-center justify-center">
+      {/* Backdrop click */}
+      <div className="absolute inset-0" onClick={onClose} />
 
       {/* Modal */}
-      <div className="relative bg-gray-900 border border-white/10 rounded-xl shadow-2xl w-full max-w-md mx-4 p-6">
-        <h2 className="text-white font-semibold text-lg mb-4">Create Playlist</h2>
+      <div className="relative bg-card border border-warm w-full max-w-[460px] p-8">
+        <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-amber to-transparent" />
+        <h2 className="font-display text-2xl text-cream mb-6">Create Playlist</h2>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Cover emoji picker */}
           <div>
-            <label className="block text-sm text-gray-300 mb-2">Cover</label>
-            {/* Current selection preview */}
+            <label className="font-condensed text-[9px] tracking-[0.2em] uppercase text-muted mb-2 block">Cover</label>
             <div className="flex justify-center mb-3">
-              <div className="w-16 h-16 flex items-center justify-center rounded-lg bg-purple-900/50 text-4xl">
+              <div className="w-16 h-16 flex items-center justify-center bg-raised border border-warm text-4xl">
                 {coverImage}
               </div>
             </div>
-            {/* Emoji grid */}
             <div className="grid grid-cols-5 gap-1">
               {COVER_EMOJI_OPTIONS.map((emoji) => (
                 <button
                   key={emoji}
                   type="button"
                   onClick={() => setCoverImage(emoji)}
-                  className={`
-                    w-full aspect-square flex items-center justify-center text-xl rounded-lg transition-colors
-                    ${coverImage === emoji
-                      ? 'bg-purple-600 ring-2 ring-purple-400'
-                      : 'bg-white/5 hover:bg-white/10'
-                    }
-                  `}
+                  className={`w-9 h-9 border bg-raised hover:bg-warm transition-colors flex items-center justify-center cursor-pointer text-xl ${
+                    coverImage === emoji ? 'border-amber bg-amber-dim' : 'border-warm'
+                  }`}
                 >
                   {emoji}
                 </button>
@@ -100,30 +95,30 @@ export default function CreatePlaylistModal({ isOpen, onClose, onCreate }: Creat
 
           {/* Name */}
           <div>
-            <label className="block text-sm text-gray-300 mb-1">Name</label>
+            <label className="font-condensed text-[9px] tracking-[0.2em] uppercase text-muted mb-2 block">Name</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="My Playlist"
               autoFocus
-              className="w-full px-3 py-2 bg-gray-800 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 text-sm"
+              className="w-full bg-raised border border-warm text-cream font-sans text-sm p-3 outline-none focus:border-amber transition-colors placeholder:text-muted"
               maxLength={PLAYLIST_NAME_MAX_LEN}
             />
           </div>
 
           {/* Description */}
           <div>
-            <label className="block text-sm text-gray-300 mb-1">Description (optional)</label>
+            <label className="font-condensed text-[9px] tracking-[0.2em] uppercase text-muted mb-2 block">Description (optional)</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="What's this playlist about?"
               rows={2}
-              className="w-full px-3 py-2 bg-gray-800 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 text-sm resize-none"
+              className="w-full bg-raised border border-warm text-cream font-sans text-sm p-3 outline-none focus:border-amber transition-colors placeholder:text-muted resize-none"
               maxLength={PLAYLIST_DESC_MAX_LEN}
             />
-            <p className={`text-xs mt-1 text-right ${descNearLimit ? 'text-red-400' : 'text-gray-500'}`}>
+            <p className={`text-xs mt-1 text-right ${descNearLimit ? 'text-red-400' : 'text-muted'}`}>
               {description.length} / {PLAYLIST_DESC_MAX_LEN}
             </p>
           </div>
@@ -132,11 +127,11 @@ export default function CreatePlaylistModal({ isOpen, onClose, onCreate }: Creat
             <p className="text-red-400 text-sm">{error}</p>
           )}
 
-          <div className="flex justify-end gap-3 pt-2">
+          <div className="flex justify-end gap-3 mt-6">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-sm text-gray-300 hover:text-white transition-colors"
+              className="px-4 py-2.5 border border-warm text-muted font-condensed text-[11px] tracking-widest uppercase hover:text-cream transition-colors"
               disabled={isCreating}
             >
               Cancel
@@ -144,7 +139,7 @@ export default function CreatePlaylistModal({ isOpen, onClose, onCreate }: Creat
             <button
               type="submit"
               disabled={isCreating || !name.trim() || description.length > PLAYLIST_DESC_MAX_LEN}
-              className="px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm rounded-lg transition-colors"
+              className="px-4 py-2.5 bg-amber text-bg font-condensed text-[11px] tracking-widest uppercase font-semibold hover:brightness-110 transition-all disabled:opacity-50"
             >
               {isCreating ? 'Creating...' : 'Create'}
             </button>

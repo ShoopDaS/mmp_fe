@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
+import { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { IPlayerAdapter, Track, PlayerState } from '@/lib/player-adapters/IPlayerAdapter';
 import { SpotifyAdapter } from '@/lib/player-adapters/SpotifyAdapter';
 import { SoundCloudAdapter } from '@/lib/player-adapters/SoundCloudAdapter';
@@ -9,6 +9,7 @@ import { useQueue } from '@/hooks/useQueue';
 import { LoopMode } from '@/types/queue';
 import { CustomPlaylist } from '@/types/playlist';
 import QueueManager from '@/components/queue/QueueManager';
+import { useContextMenu } from '@/contexts/ContextMenuContext';
 
 interface UnifiedMusicPlayerProps {
   track: Track;
@@ -49,9 +50,12 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
   
   const loopModeRef = useRef<LoopMode>('none');
   const currentTrackRef = useRef<Track>(track); // Ensures callbacks always see the latest track
+  const prevVolumeRef = useRef(0.8);
+  const vuBarHeights = useRef(Array.from({ length: 28 }, () => Math.random() * 60 + 40));
 
   // Queue integration
   const queue = useQueue();
+  const { openMenu } = useContextMenu();
 
   // Keep track ref updated for closures
   useEffect(() => {
@@ -273,13 +277,45 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
     }
   };
 
+  const handleProgressClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pct = (e.clientX - rect.left) / rect.width;
+    const seekTime = pct * playerState.duration;
+    adaptersMap.current[track.platform]?.seek(seekTime)?.catch((err: unknown) => {
+      console.warn('seek failed:', err);
+    });
+  }, [playerState.duration, track.platform]);
+
+  const handleMuteToggle = useCallback(() => {
+    if (playerState.volume > 0) {
+      prevVolumeRef.current = playerState.volume;
+      adaptersMap.current[track.platform]?.setVolume(0)?.catch((err: unknown) => {
+        console.warn('mute failed:', err);
+      });
+    } else {
+      adaptersMap.current[track.platform]?.setVolume(prevVolumeRef.current)?.catch((err: unknown) => {
+        console.warn('unmute failed:', err);
+      });
+    }
+  }, [playerState.volume, track.platform]);
+
+  const handleVolumeClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    adaptersMap.current[track.platform]?.setVolume(pct)?.catch((err: unknown) => {
+      console.warn('setVolume failed:', err);
+    });
+  }, [track.platform]);
+
+  const progressPct = playerState.duration > 0 ? (playerState.currentTime / playerState.duration) * 100 : 0;
+
   if (readyPlatform !== track.platform && !error) {
     return (
-      <aside className="flex-1 flex flex-col items-center justify-center">
-        <div className="text-center text-text-secondary animate-pulse">
-          ⏳ Initializing {track.platform}...
+      <div className="flex flex-col h-full items-center justify-center">
+        <div className="text-center text-muted animate-pulse font-condensed text-[11px] tracking-[0.15em] uppercase">
+          Initializing {track.platform}…
         </div>
-      </aside>
+      </div>
     );
   }
 
@@ -288,122 +324,178 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
   const errorMessage = error ? (youtubeUrl ? error.split('Open on YouTube:')[0].trim() : error) : null;
 
   return (
-    <aside className={`flex-1 flex flex-col overflow-hidden ${error ? 'border-red-500/30' : ''}`}>
-      
-      {/* 1. Album Art & Glassmorphism Header */}
-      <div className="relative w-full aspect-square shrink-0 overflow-hidden">
-         <div className="absolute inset-0 bg-cover bg-center opacity-40 blur-3xl scale-110" style={{ backgroundImage: `url(${track.album.images[0]?.url})` }} />
-         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-surface/50 to-surface" />
-         
-         <div className="absolute inset-8 rounded-2xl overflow-hidden shadow-2xl shadow-black/50 border border-white/10">
-           <img src={track.album.images[0]?.url} alt={track.album.name} className={`w-full h-full object-cover ${error ? 'opacity-50 grayscale' : ''}`} />
-           <div className={`absolute bottom-2 right-2 px-2 py-1 rounded-md text-[10px] font-bold text-white shadow-lg uppercase tracking-wider ${getPlatformColor()}`}>
-             {track.platform}
-           </div>
-         </div>
-      </div>
+    <div className="flex flex-col h-full">
+      {/* Player section */}
+      <div className="flex-shrink-0 p-5 border-b border-warm">
 
-      {/* 2. Track Info */}
-      <div className="px-6 mt-2 text-center shrink-0 relative z-10">
-         <h3 className="font-bold text-white text-xl truncate">{track.name}</h3>
-         {errorMessage ? (
-           <div className="flex flex-col items-center gap-1 mt-1">
-             <p className="text-xs text-red-400 line-clamp-2">⚠️ {errorMessage}</p>
-             {autoSkipCountdown !== null && <span className="text-[10px] text-text-secondary">Skipping in {autoSkipCountdown}s</span>}
-             {youtubeUrl && <a href={youtubeUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-red-400 underline mt-1">Open on YouTube</a>}
-           </div>
-         ) : (
-           <p className="text-sm text-text-secondary truncate mt-1">
-             {track.artists.map(a => a.name).join(', ')}
-           </p>
-         )}
-      </div>
-
-      {/* 3. Progress Bar */}
-      <div className="px-8 mt-6 shrink-0 relative z-10">
-        <input
-          type="range" min="0" max={playerState.duration || 1} value={playerState.currentTime} onChange={handleSeek}
-          className="w-full h-1 bg-surface-hover rounded-lg appearance-none cursor-pointer accent-white hover:h-1.5 transition-all"
-          style={{ background: `linear-gradient(to right, white 0%, white ${(playerState.currentTime / playerState.duration) * 100}%, var(--surface-hover) ${(playerState.currentTime / playerState.duration) * 100}%, var(--surface-hover) 100%)` }}
-        />
-        <div className="flex justify-between text-[10px] text-text-secondary font-medium mt-2">
-          <span>{formatTime(playerState.currentTime)}</span>
-          <span>{formatTime(playerState.duration)}</span>
+        {/* Header row */}
+        <div className="flex items-center justify-between mb-5">
+          <span className="font-condensed text-[9px] tracking-[0.22em] uppercase text-muted">Now Playing</span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-blink" />
+            <span className="font-condensed text-[9px] tracking-[0.15em] uppercase text-red-400">Rec</span>
+          </span>
         </div>
-      </div>
 
-      {/* 4. Playback Controls */}
-      <div className="px-5 mt-4 mb-2 flex items-center justify-between shrink-0 relative z-10">
-        <button onClick={queue.toggleShuffle} className={`p-2 rounded-full transition-all ${queue.shuffle ? 'text-accent' : 'text-text-secondary hover:text-white'}`}>
-          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z" /></svg>
-        </button>
+        {/* Cassette tape deck */}
+        <div className="relative mb-5">
+          {/* Accent stripe top edge */}
+          <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-amber to-transparent" />
 
-        <button onClick={handlePrevious} className="p-2 text-white hover:text-accent transition-colors">
-          <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M8.445 14.832A1 1 0 0010 14v-2.798l5.445 3.63A1 1 0 0017 14V6a1 1 0 00-1.555-.832L10 8.798V6a1 1 0 00-1.555-.832l-6 4a1 1 0 000 1.664l6 4z" /></svg>
-        </button>
+          <div className="bg-card border border-warm p-4 pt-5">
+            <div className="flex items-center gap-3">
+              {/* Left spool */}
+              <div className="flex flex-col items-center gap-1.5">
+                <svg className={`w-12 h-12 text-amber ${playerState.isPlaying ? 'animate-spin-slow' : ''}`} viewBox="0 0 48 48" fill="none">
+                  <circle cx="24" cy="24" r="22" stroke="currentColor" strokeWidth="1.5" />
+                  <circle cx="24" cy="24" r="12" stroke="currentColor" strokeWidth="1" />
+                  <circle cx="24" cy="24" r="3" fill="currentColor" />
+                </svg>
+                <span className="font-condensed text-[11px] text-amber tabular-nums">
+                  {formatTime(playerState.currentTime)}
+                </span>
+              </div>
 
-        <button onClick={error ? undefined : togglePlay} disabled={!!error} className={`w-14 h-14 rounded-full flex items-center justify-center transition-transform shadow-lg ${error ? 'bg-surface-hover cursor-not-allowed opacity-50' : `${getPlatformColor().split(' ')[0]} hover:scale-105`}`}>
-          <span className="text-2xl text-white ml-1">{playerState.isPlaying ? '⏸️' : '▶️'}</span>
-        </button>
+              {/* Tape bridge with progress */}
+              <div className="flex-1 px-1">
+                <div
+                  className="h-[3px] bg-warm cursor-pointer relative"
+                  onClick={handleProgressClick}
+                >
+                  <div
+                    className="h-full bg-gradient-to-r from-red-800 to-amber relative"
+                    style={{ width: `${progressPct}%` }}
+                  >
+                    {/* Playhead */}
+                    <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-1 h-4 bg-amber shadow-[0_0_6px_rgba(224,148,58,0.5)]" />
+                  </div>
+                </div>
+              </div>
 
-        <button onClick={handleNext} className="p-2 text-white hover:text-accent transition-colors">
-          <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M11.555 5.168A1 1 0 0010 6v2.798L4.555 5.168A1 1 0 003 6v8a1 1 0 001.555.832L10 11.202V14a1 1 0 001.555.832l6-4a1 1 0 000-1.664l-6-4z" /></svg>
-        </button>
-
-        <button onClick={queue.cycleLoopMode} className={`p-2 rounded-full transition-all relative ${queue.loopMode !== 'none' ? 'text-accent' : 'text-text-secondary hover:text-white'}`}>
-          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" /></svg>
-          {getLoopModeLabel() && <span className="absolute -top-1 -right-1 text-[9px] font-bold bg-accent text-white rounded-full w-3.5 h-3.5 flex items-center justify-center">{getLoopModeLabel()}</span>}
-        </button>
-
-        {/* --- BRAND NEW VOLUME CONTROL --- */}
-        <div
-          className="relative flex items-center justify-center group"
-          onMouseEnter={() => setShowVolume(true)}
-          onMouseLeave={() => setShowVolume(false)}
-          onWheel={handleVolumeWheel}
-        >
-          {/* Volume Quick-Toggle Button */}
-          <button
-            onClick={() => {
-              const newVol = playerState.volume > 0 ? 0 : 1;
-              adaptersMap.current[track.platform]?.setVolume(newVol)?.catch((e: unknown) => {
-                console.warn('mute/unmute setVolume failed:', e);
-              });
-            }}
-            className={`p-2 rounded-full transition-all ${playerState.volume > 0 ? 'text-text-secondary hover:text-white' : 'text-red-400 hover:text-red-300'}`}
-            title={playerState.volume > 0 ? 'Mute' : 'Unmute'}
-          >
-            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-              {playerState.volume === 0 ? (
-                 <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM12.293 7.293a1 1 0 011.414 0L15 8.586l1.293-1.293a1 1 0 111.414 1.414L16.414 10l1.293 1.293a1 1 0 01-1.414 1.414L15 11.414l-1.293 1.293a1 1 0 01-1.414-1.414L13.586 10l-1.293-1.293a1 1 0 010-1.414z" clipRule="evenodd" />
-              ) : (
-                 <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z" clipRule="evenodd" />
-              )}
-            </svg>
-          </button>
-
-          {/* Hover Popout Slider */}
-          <div className={`absolute bottom-full right-1/2 translate-x-1/2 mb-2 w-8 h-32 bg-surface border border-white/10 rounded-xl flex items-center justify-center transition-all origin-bottom shadow-2xl z-50 ${showVolume ? 'opacity-100 scale-100 visible' : 'opacity-0 scale-95 invisible'}`}>
-            <input
-              type="range"
-              min="0" max="1" step="0.01"
-              value={playerState.volume}
-              onChange={handleVolumeChange}
-              className="w-24 h-1 bg-black/50 rounded-lg appearance-none cursor-pointer accent-white"
-              style={{
-                transform: 'rotate(-90deg)', // Magic trick to make standard horizontal sliders vertical
-                background: `linear-gradient(to right, white 0%, white ${playerState.volume * 100}%, rgba(255,255,255,0.1) ${playerState.volume * 100}%, rgba(255,255,255,0.1) 100%)`
-              }}
-            />
+              {/* Right spool */}
+              <div className="flex flex-col items-center gap-1.5">
+                <svg className={`w-12 h-12 text-muted ${playerState.isPlaying ? 'animate-[spin_3s_linear_infinite_reverse]' : ''}`} viewBox="0 0 48 48" fill="none">
+                  <circle cx="24" cy="24" r="22" stroke="currentColor" strokeWidth="1.5" />
+                  <circle cx="24" cy="24" r="12" stroke="currentColor" strokeWidth="1" />
+                  <circle cx="24" cy="24" r="3" fill="currentColor" />
+                </svg>
+                <span className="font-condensed text-[11px] text-muted tabular-nums">
+                  {formatTime(playerState.duration)}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
-        {/* --- END VOLUME CONTROL --- */}
+
+        {/* Now playing info */}
+        <div className="text-center mb-5">
+          {track.album.images[0]?.url && (
+            <img src={track.album.images[0].url} alt="" className={`w-16 h-16 mx-auto mb-3 border border-warm object-cover ${error ? 'opacity-50 grayscale' : ''}`} />
+          )}
+          <h3 className="font-display text-lg text-cream truncate">{track.name}</h3>
+          {errorMessage ? (
+            <div className="mt-1">
+              <p className="text-[11px] text-red-400 line-clamp-2">{errorMessage}</p>
+              {autoSkipCountdown !== null && <span className="text-[10px] text-muted mt-1 block">Skipping in {autoSkipCountdown}s</span>}
+              {youtubeUrl && <a href={youtubeUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] text-red-400 underline mt-1 inline-block">Open on YouTube</a>}
+            </div>
+          ) : (
+            <p className="text-sub italic text-sm truncate mt-0.5">
+              {track.artists.map(a => a.name).join(', ')}
+            </p>
+          )}
+          <span className={`inline-block mt-2 font-condensed text-[9px] tracking-[0.15em] uppercase px-2 py-0.5 border ${
+            track.platform === 'spotify' ? 'text-spotify border-spotify/30' :
+            track.platform === 'youtube' ? 'text-youtube border-youtube/30' :
+            'text-soundcloud border-soundcloud/30'
+          }`}>{track.platform}</span>
+        </div>
+
+        {/* Playback controls */}
+        <div className="flex items-center justify-center gap-5 mb-5">
+          {/* Shuffle */}
+          <button onClick={queue.toggleShuffle} className={`transition-colors ${queue.shuffle ? 'text-amber' : 'text-muted hover:text-sub'}`}>
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+          </button>
+          {/* Previous */}
+          <button onClick={handlePrevious} className="text-muted hover:text-cream transition-colors">
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+          </button>
+          {/* Play/Pause */}
+          <button onClick={error ? undefined : togglePlay} disabled={!!error} className={`w-12 h-12 flex items-center justify-center transition-all ${error ? 'bg-warm cursor-not-allowed opacity-50' : 'bg-amber text-bg hover:brightness-110'}`}>
+            {playerState.isPlaying ? (
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4h4v16H6zm8 0h4v16h-4z"/></svg>
+            ) : (
+              <svg className="w-5 h-5 ml-0.5" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            )}
+          </button>
+          {/* Next */}
+          <button onClick={handleNext} className="text-muted hover:text-cream transition-colors">
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+          </button>
+          {/* Loop */}
+          <button onClick={queue.cycleLoopMode} className={`transition-colors relative ${queue.loopMode !== 'none' ? 'text-amber' : 'text-muted hover:text-sub'}`}>
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+            {queue.loopMode === 'one' && <span className="absolute -top-1 -right-1 text-[8px] text-amber font-bold">1</span>}
+          </button>
+          {/* Add current track */}
+          <button
+            onClick={(e) => openMenu(e, 'search', track as any)}
+            className="text-muted hover:text-cream transition-colors"
+            title="Add to playlist / queue"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+          </button>
+        </div>
+
+        {/* VU Meter */}
+        <div className="flex items-end justify-center gap-px h-6 mb-4">
+          {vuBarHeights.current.map((h, i) => (
+            <div
+              key={i}
+              className={`w-1 origin-bottom ${i < 20 ? 'bg-amber' : i < 24 ? 'bg-amber/70' : 'bg-red-500/70'}`}
+              style={{
+                height: `${h}%`,
+                transform: playerState.isPlaying ? undefined : 'scaleY(0.15)',
+                animation: playerState.isPlaying ? `vu ${0.2 + (h / 100) * 0.3}s ease-in-out infinite alternate` : 'none',
+                animationDelay: `${i * 0.02}s`,
+                opacity: playerState.isPlaying ? 1 : 0.25,
+                transition: playerState.isPlaying ? 'none' : 'transform 0.4s ease, opacity 0.4s ease',
+              }}
+            />
+          ))}
+        </div>
+
+        {/* Volume */}
+        <div className="flex items-center gap-3">
+          <button onClick={handleMuteToggle} className="text-muted hover:text-cream transition-colors">
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              {playerState.volume === 0 ? <><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></>
+              : <><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></>}
+            </svg>
+          </button>
+          <div
+            className="flex-1 h-3 cursor-pointer relative group flex items-center"
+            onClick={handleVolumeClick}
+            onWheel={handleVolumeWheel}
+          >
+            <div className="absolute inset-y-0 left-0 right-0 flex items-center">
+              <div className="w-full h-1 bg-warm relative">
+                <div className="h-full bg-amber" style={{ width: `${playerState.volume * 100}%` }} />
+                <div
+                  className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-amber opacity-0 group-hover:opacity-100 transition-opacity"
+                  style={{ left: `${playerState.volume * 100}%`, transform: 'translate(-50%, -50%)' }}
+                />
+              </div>
+            </div>
+          </div>
+          <span className="font-condensed text-[10px] text-muted w-7 text-right">{Math.round(playerState.volume * 100)}%</span>
+        </div>
       </div>
 
-      {/* 5. Inline Seamless Queue */}
-      <QueueManager customPlaylists={customPlaylists} />
-      
-    </aside>
+      {/* Queue section */}
+      <QueueManager />
+    </div>
   );
 });
 

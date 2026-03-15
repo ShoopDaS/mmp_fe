@@ -2,25 +2,79 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Scale entire UI to match browser zoom at 140% */
+html {
+  zoom: 1.2;
+}
+
+/* ── Design Tokens ── */
 :root {
-  /* Core layout colors */
-  --bg-base: #0a0a0c;          /* Deep Obsidian background */
-  --surface-color: #16161a;    /* Elevated grey for sidebars/cards */
-  --surface-hover: #232329;    /* Slightly lighter grey for hover states */
-  --accent-color: #6366f1;     /* Brand Indigo */
-  
-  /* Text colors */
-  --text-primary: #ffffff;
-  --text-secondary: #a1a1aa;
+  --bg:           #130d07;
+  --bg-warm:      #1a1009;
+  --bg-card:      #211408;
+  --bg-raised:    #2a1b0c;
+  --bg-input:     #1e1309;
+  --amber:        #e0943a;
+  --amber-lt:     #f0b060;
+  --amber-dim:    rgba(224,148,58,0.12);
+  --amber-glow:   rgba(224,148,58,0.06);
+  --rust:         #b84018;
+  --rust-lt:      #d05020;
+  --cream:        #f0e4cc;
+  --cream-dim:    #b8a888;
+  --border:       rgba(224,148,58,0.10);
+  --border-warm:  rgba(224,148,58,0.22);
+  --border-hard:  rgba(224,148,58,0.35);
+  --muted:        #906030;
+  --text-sub:     #b08848;
+  --text:         #c8a870;
+  --spotify:      #1DB954;
+  --youtube:      #FF4040;
+  --soundcloud:   #FF6600;
 }
 
 body {
-  background-color: var(--bg-base);
-  color: var(--text-primary);
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Barlow', sans-serif;
+  font-weight: 300;
+  font-size: 16px;
+  position: relative;
 }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
+body::before {
+  content: '';
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 15% 60%, rgba(196,75,26,0.07) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 15%, rgba(224,148,58,0.05) 0%, transparent 45%),
+    radial-gradient(ellipse at 50% 90%, rgba(184,64,24,0.04) 0%, transparent 40%);
+}
+
+body::after {
+  content: '';
+  position: fixed; inset: 0; pointer-events: none; z-index: 9999; opacity: 0.5;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)' opacity='0.045'/%3E%3C/svg%3E");
+  background-size: 200px 200px;
+}
+
+/* Thin amber scrollbars */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-warm); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+* { scrollbar-width: thin; scrollbar-color: var(--border-warm) transparent; }
+
+/* Amber accent stripe — apply to card tops via ::before on a `relative overflow-hidden` parent */
+.accent-stripe::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, var(--rust) 0%, var(--amber) 50%, var(--rust) 100%);
+  opacity: 0.5;
+}
+
+/* VU meter bar animation — defined here so it's always available for inline style references */
+@keyframes vu {
+  from { transform: scaleY(0.35); opacity: 0.45; }
+  to   { transform: scaleY(1);    opacity: 1; }
 }
