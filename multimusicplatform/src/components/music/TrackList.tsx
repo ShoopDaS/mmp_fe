@@ -40,6 +40,7 @@ interface TrackListProps {
   onRequestPlaylistTrackIds?: (playlistIds: string[]) => void;
   platformPlaylistTrackIds?: Record<string, Set<string>>;
   onRequestPlatformPlaylistTrackIds?: (platform: 'spotify' | 'youtube', playlistIds: string[]) => void;
+  mode?: 'search' | 'library' | 'library-platform';
 }
 
 export default function TrackList({
@@ -48,6 +49,7 @@ export default function TrackList({
   ownedPlatformPlaylists, onAddToCustomPlaylist, onAddToPlatformPlaylist,
   onRequestPlatformPlaylists, playlistTrackIds, onRequestPlaylistTrackIds,
   platformPlaylistTrackIds, onRequestPlatformPlaylistTrackIds,
+  mode = 'search',
 }: TrackListProps) {
   const [feedbackId, setFeedbackId] = useState<{ trackId: string; action: 'queued' | 'next' } | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -72,10 +74,13 @@ export default function TrackList({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [openMenuId]);
 
-  const getActiveStyles = (isCurrentTrack: boolean) => {
-    return isCurrentTrack 
-      ? 'bg-gradient-to-r from-accent/10 to-transparent border-l-2 border-accent' 
-      : 'hover:bg-white/5 border-l-2 border-transparent';
+  const pipBg = (platform: string) => {
+    switch (platform) {
+      case 'spotify': return 'bg-spotify';
+      case 'youtube': return 'bg-youtube';
+      case 'soundcloud': return 'bg-soundcloud';
+      default: return 'bg-muted';
+    }
   };
 
   const platformMeta = (platform: 'spotify' | 'youtube' | 'soundcloud') => {
@@ -180,7 +185,7 @@ export default function TrackList({
   const showAddToPlaylist = !!(onAddToCustomPlaylist || onAddToPlatformPlaylist);
 
   return (
-    <div className="space-y-1.5">
+    <div className="flex flex-col">
       {tracks.map((track, index) => {
         const isCurrentTrack = currentTrack?.id === track.id;
         const albumImage = track.album.images[0]?.url || '';
@@ -190,6 +195,7 @@ export default function TrackList({
         const isAddToPlaylistOpen = addToPlaylistOpenId === track.id;
         const meta = platformMeta(track.platform);
         const platformPlaylists = ownedPlatformPlaylists?.[track.platform];
+        const pipBgClass = pipBg(track.platform);
 
         return (
           <div
@@ -202,57 +208,61 @@ export default function TrackList({
             onDrop={canDrag ? (e) => handleDrop(e, index) : undefined}
             onDragEnd={canDrag ? handleDragEnd : undefined}
             className={`
-              flex items-center gap-4 p-2.5 rounded-lg transition-all duration-200 cursor-pointer relative group
-              ${getActiveStyles(isCurrentTrack)}
-              ${openMenuId === track.id ? 'z-20 bg-white/5' : 'z-0'}
+              flex items-center gap-3 px-3 py-2.5 cursor-pointer border-b border-warm border-l-2 transition-colors group relative
+              ${isCurrentTrack ? 'bg-amber-dim border-l-amber' : 'border-l-transparent hover:bg-warm/50'}
+              ${openMenuId === track.id ? 'z-20' : 'z-0'}
               ${removingId === track.id ? 'opacity-0 translate-x-8 scale-95 pointer-events-none' : ''}
               ${isDragging && removingId !== track.id ? 'opacity-40' : ''}
-              ${isDragOver ? 'ring-1 ring-accent bg-surface-hover' : ''}
+              ${isDragOver ? 'ring-1 ring-amber bg-warm/50' : ''}
             `}
             onClick={() => handleTrackClick(track)}
           >
             {canDrag && (
-              <span className="text-text-secondary group-hover:text-white cursor-grab active:cursor-grabbing shrink-0" title="Drag to reorder" onMouseDown={(e) => e.stopPropagation()}>
+              <span className="text-muted group-hover:text-sub cursor-grab active:cursor-grabbing shrink-0" title="Drag to reorder" onMouseDown={(e) => e.stopPropagation()}>
                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M7 2a2 2 0 10.001 4.001A2 2 0 007 2zm0 6a2 2 0 10.001 4.001A2 2 0 007 8zm0 6a2 2 0 10.001 4.001A2 2 0 007 14zm6-8a2 2 0 10-.001-4.001A2 2 0 0013 6zm0 2a2 2 0 10.001 4.001A2 2 0 0013 8zm0 6a2 2 0 10.001 4.001A2 2 0 0013 14z" /></svg>
               </span>
             )}
 
-            {/* Play/Pause indicator */}
-            <div className={`w-6 flex justify-center shrink-0 transition-colors ${isCurrentTrack ? 'text-accent' : 'text-text-secondary group-hover:text-white'}`}>
+            {/* Number / play icon */}
+            <div className="w-6 text-center flex-shrink-0 relative">
               {isCurrentTrack ? (
                 isPlaying ? (
-                  <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M6 4h4v16H6zm8 0h4v16h-4z"/></svg>
+                  <svg className="w-3.5 h-3.5 mx-auto fill-current text-amber" viewBox="0 0 24 24"><path d="M6 4h4v16H6zm8 0h4v16h-4z"/></svg>
                 ) : (
-                  <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                  <svg className="w-3.5 h-3.5 mx-auto fill-current text-amber" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
                 )
               ) : (
-                <svg className="w-4 h-4 opacity-0 group-hover:opacity-100 fill-current" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                <>
+                  <span className="font-condensed text-[11px] text-muted group-hover:hidden">{index + 1}</span>
+                  <span className="hidden group-hover:block text-amber text-[11px]">▶</span>
+                </>
               )}
             </div>
 
-            {/* Album art with Platform Badge */}
+            {/* Thumbnail with platform pip */}
             <div className="relative shrink-0">
               {albumImage ? (
-                <img src={albumImage} alt={track.album.name} className="w-10 h-10 rounded-md object-cover shadow-sm border border-white/5" />
+                <img src={albumImage} alt={track.album.name} className="w-11 h-11 object-cover border border-warm" />
               ) : (
-                <div className="w-10 h-10 rounded-md bg-surface-hover flex items-center justify-center border border-white/5 shadow-sm">
-                  <DefaultMusicIcon className="w-5 h-5 text-white/20" />
-                </div>
+                <div className="w-11 h-11 bg-raised border border-warm flex items-center justify-center text-muted">🎵</div>
               )}
-              {/* Brand Floating Badge */}
-              <div className={`absolute -bottom-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center border-[1.5px] border-surface backdrop-blur-md ${meta.bg} ${meta.color}`}>
-                 {meta.icon}
-              </div>
+              <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border border-bg ${pipBgClass}`} />
             </div>
 
             {/* Track info */}
-            <div className="flex-1 min-w-0 flex flex-col justify-center">
-              <h3 className={`text-[14px] font-medium truncate ${isCurrentTrack ? 'text-accent' : 'text-white'}`}>{track.name}</h3>
-              <p className="text-[12px] text-text-secondary truncate mt-0.5">
-                {track.artists.map(a => a.name).join(', ')} <span className="mx-1 opacity-50">•</span> {track.album.name}
+            <div className="flex-1 min-w-0">
+              <p className={`text-[14px] font-light truncate ${isCurrentTrack ? 'text-amber' : 'text-cream'}`}>{track.name}</p>
+              <p className="text-[12px] text-sub truncate mt-0.5">
+                {track.artists.map(a => a.name).join(', ')} <span className="text-muted mx-1">·</span> {track.album.name}
               </p>
             </div>
 
+            {/* Duration */}
+            <span className="font-condensed text-[12px] text-muted flex-shrink-0 min-w-[38px] text-right tabular-nums">
+              {Math.floor(track.duration_ms / 60000)}:{String(Math.floor((track.duration_ms % 60000) / 1000)).padStart(2, '0')}
+            </span>
+
+            {/* Kebab + actions */}
             <div className="relative flex items-center gap-1 shrink-0" ref={openMenuId === track.id ? menuRef : undefined}>
               <button
                 onClick={(e) => {
@@ -261,70 +271,70 @@ export default function TrackList({
                   setOpenMenuId(closing ? null : track.id);
                   if (closing) setAddToPlaylistOpenId(null);
                 }}
-                className="p-1.5 rounded-md text-text-secondary hover:bg-white/10 hover:text-white transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
+                className="w-7 h-7 flex items-center justify-center text-muted opacity-0 group-hover:opacity-100 hover:text-amber transition-opacity"
               >
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>
+                ⋮
               </button>
 
               {isCustomPlaylist && onRemoveFromPlaylist && (
-                <button onClick={(e) => handleRemoveClick(e, track)} className="p-1.5 rounded-md text-text-secondary opacity-0 group-hover:opacity-100 hover:bg-red-500/20 hover:text-red-400 transition-all flex items-center justify-center" title="Remove from playlist">
+                <button onClick={(e) => handleRemoveClick(e, track)} className="p-1.5 text-muted opacity-0 group-hover:opacity-100 hover:text-red-400 hover:bg-red-500/10 transition-all flex items-center justify-center" title="Remove from playlist">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                 </button>
               )}
 
               {openMenuId === track.id && (
-                <div className={`absolute right-0 top-full mt-1 bg-surface-hover border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden transition-all ${isAddToPlaylistOpen ? 'w-60' : 'w-48'}`}>
+                <div className={`absolute right-0 top-full mt-1 bg-raised border border-warm shadow-2xl z-50 overflow-hidden transition-all ${isAddToPlaylistOpen ? 'w-60' : 'w-48'}`}>
                   {onPlayNext && (
-                    <button onClick={(e) => { handlePlayNext(e, track); setOpenMenuId(null); setAddToPlaylistOpenId(null); }} className="w-full flex items-center gap-3 px-3 py-2.5 text-[13px] text-gray-200 hover:bg-white/10 transition-colors">
+                    <button onClick={(e) => { handlePlayNext(e, track); setOpenMenuId(null); setAddToPlaylistOpenId(null); }} className="w-full flex items-center gap-3 px-3 py-2.5 text-[13px] text-cream hover:bg-warm/80 transition-colors">
                       {feedback === 'next' ? (
-                        <><svg className="w-4 h-4 text-green-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg><span className="text-green-400">Up next!</span></>
+                        <><svg className="w-4 h-4 text-amber shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg><span className="text-amber">Up next!</span></>
                       ) : (
-                        <><svg className="w-4 h-4 text-text-secondary shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" /></svg>Add next in queue</>
+                        <><svg className="w-4 h-4 text-muted shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" /></svg>Add next in queue</>
                       )}
                     </button>
                   )}
                   {onAddToQueue && (
-                    <button onClick={(e) => { handleAddToQueue(e, track); setOpenMenuId(null); setAddToPlaylistOpenId(null); }} className="w-full flex items-center gap-3 px-3 py-2.5 text-[13px] text-gray-200 hover:bg-white/10 transition-colors">
+                    <button onClick={(e) => { handleAddToQueue(e, track); setOpenMenuId(null); setAddToPlaylistOpenId(null); }} className="w-full flex items-center gap-3 px-3 py-2.5 text-[13px] text-cream hover:bg-warm/80 transition-colors">
                       {feedback === 'queued' ? (
-                        <><svg className="w-4 h-4 text-green-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg><span className="text-green-400">Added!</span></>
+                        <><svg className="w-4 h-4 text-amber shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg><span className="text-amber">Added!</span></>
                       ) : (
-                        <><svg className="w-4 h-4 text-text-secondary shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>Add to queue</>
+                        <><svg className="w-4 h-4 text-muted shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>Add to queue</>
                       )}
                     </button>
                   )}
 
                   {showAddToPlaylist && (
                     <>
-                      <div className="border-t border-white/10 my-1" />
-                      <button onClick={(e) => toggleAddToPlaylistPanel(e, track)} className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-[13px] text-gray-200 hover:bg-white/10 transition-colors">
+                      <div className="border-t border-warm my-1" />
+                      <button onClick={(e) => toggleAddToPlaylistPanel(e, track)} className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-[13px] text-cream hover:bg-warm/80 transition-colors">
                         <span className="flex items-center gap-3">
-                          <svg className="w-4 h-4 text-text-secondary shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></svg>
+                          <svg className="w-4 h-4 text-muted shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></svg>
                           Add to playlist
                         </span>
-                        <svg className="w-3.5 h-3.5 text-text-secondary shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <svg className="w-3.5 h-3.5 text-muted shrink-0" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d={isAddToPlaylistOpen ? "M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" : "M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"} clipRule="evenodd" />
                         </svg>
                       </button>
 
                       {isAddToPlaylistOpen && (
-                        <div className="max-h-56 overflow-y-auto border-t border-white/10 scrollbar-thin scrollbar-thumb-white/10">
+                        <div className="max-h-56 overflow-y-auto border-t border-warm scrollbar-thin scrollbar-thumb-warm/30">
                           {onAddToCustomPlaylist && (
                             <>
                               <p
-                                className="sticky top-0 bg-surface-hover px-3 py-1.5 text-[10px] text-text-secondary uppercase tracking-wider font-bold z-20 cursor-pointer hover:text-white transition-colors"
+                                className="sticky top-0 bg-raised px-3 py-1.5 font-condensed text-[9px] tracking-[0.2em] uppercase text-muted z-20 cursor-pointer hover:text-cream transition-colors"
                                 onClick={(e) => { e.stopPropagation(); e.currentTarget.closest('.overflow-y-auto')?.scrollTo({ top: 0, behavior: 'smooth' }); }}
                               >My Playlists</p>
                               {!customPlaylists || customPlaylists.length === 0 ? (
-                                <p className="px-3 py-2 text-xs text-text-secondary italic">No playlists yet</p>
+                                <p className="px-3 py-2 text-xs text-muted italic">No playlists yet</p>
                               ) : (
                                 customPlaylists.map(pl => {
                                   const justAdded = addFeedback?.trackId === track.id && addFeedback.playlistId === pl.playlistId;
                                   const alreadyIn = playlistTrackIds?.[pl.playlistId]?.has(track.id) ?? false;
                                   return (
-                                    <button key={pl.playlistId} onClick={(e) => { e.stopPropagation(); if (!alreadyIn) handleAddToPlaylist(track, pl.playlistId, onAddToCustomPlaylist!); }} disabled={alreadyIn} className={`w-full flex items-center gap-2.5 px-3 py-2 text-[13px] transition-colors ${alreadyIn ? 'text-gray-500 cursor-not-allowed' : 'text-gray-200 hover:bg-white/10'}`}>
-                                      <DefaultMusicIcon className="w-3.5 h-3.5 text-accent shrink-0" />
+                                    <button key={pl.playlistId} onClick={(e) => { e.stopPropagation(); if (!alreadyIn) handleAddToPlaylist(track, pl.playlistId, onAddToCustomPlaylist!); }} disabled={alreadyIn} className={`w-full flex items-center gap-2.5 px-3 py-2 text-[13px] transition-colors ${alreadyIn ? 'text-muted cursor-not-allowed' : 'text-cream hover:bg-warm/80'}`}>
+                                      <DefaultMusicIcon className="w-3.5 h-3.5 text-amber shrink-0" />
                                       <span className="truncate flex-1 text-left">{pl.name}</span>
-                                      {(alreadyIn || justAdded) && <svg className="w-3.5 h-3.5 text-green-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                                      {(alreadyIn || justAdded) && <svg className="w-3.5 h-3.5 text-amber shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
                                     </button>
                                   );
                                 })
@@ -334,22 +344,22 @@ export default function TrackList({
                           {onAddToPlatformPlaylist && track.platform !== 'soundcloud' && (
                             <>
                               <p
-                                className="sticky top-[24px] bg-surface-hover px-3 py-1.5 text-[10px] text-text-secondary uppercase tracking-wider font-bold border-t border-white/10 z-10 cursor-pointer hover:text-white transition-colors"
+                                className="sticky top-[24px] bg-raised px-3 py-1.5 font-condensed text-[9px] tracking-[0.2em] uppercase text-muted border-t border-warm z-10 cursor-pointer hover:text-cream transition-colors"
                                 onClick={(e) => { e.stopPropagation(); const container = e.currentTarget.closest('.overflow-y-auto'); const offset = e.currentTarget.offsetTop - 24; container?.scrollTo({ top: offset, behavior: 'smooth' }); }}
                               >{meta.label}</p>
                               {!platformPlaylists || platformPlaylists === 'loading' ? (
-                                <p className="px-3 py-2 text-xs text-text-secondary italic animate-pulse">Loading...</p>
+                                <p className="px-3 py-2 text-xs text-muted italic animate-pulse">Loading...</p>
                               ) : platformPlaylists.length === 0 ? (
-                                <p className="px-3 py-2 text-xs text-text-secondary italic">No playlists found</p>
+                                <p className="px-3 py-2 text-xs text-muted italic">No playlists found</p>
                               ) : (
                                 platformPlaylists.map(pl => {
                                   const justAdded = addFeedback?.trackId === track.id && addFeedback.playlistId === pl.id;
                                   const alreadyIn = platformPlaylistTrackIds?.[pl.id]?.has(track.uri) ?? false;
                                   return (
-                                    <button key={pl.id} onClick={(e) => { e.stopPropagation(); if (!alreadyIn) handleAddToPlaylist(track, pl.id, onAddToPlatformPlaylist); }} disabled={alreadyIn} className={`w-full flex items-center gap-2.5 px-3 py-2 text-[13px] transition-colors ${alreadyIn ? 'text-gray-500 cursor-not-allowed' : 'text-gray-200 hover:bg-white/10'}`}>
+                                    <button key={pl.id} onClick={(e) => { e.stopPropagation(); if (!alreadyIn) handleAddToPlaylist(track, pl.id, onAddToPlatformPlaylist); }} disabled={alreadyIn} className={`w-full flex items-center gap-2.5 px-3 py-2 text-[13px] transition-colors ${alreadyIn ? 'text-muted cursor-not-allowed' : 'text-cream hover:bg-warm/80'}`}>
                                       <div className={`${meta.color} shrink-0`}>{meta.icon}</div>
                                       <span className="truncate flex-1 text-left">{pl.name}</span>
-                                      {(alreadyIn || justAdded) && <svg className="w-3.5 h-3.5 text-green-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                                      {(alreadyIn || justAdded) && <svg className="w-3.5 h-3.5 text-amber shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
                                     </button>
                                   );
                                 })
