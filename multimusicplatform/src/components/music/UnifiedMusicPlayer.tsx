@@ -440,21 +440,20 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
 
         {/* VU Meter */}
         <div className="flex items-end justify-center gap-px h-6 mb-4">
-          {vuBarHeights.current.map((h, i) => {
-            const isPlaying = playerState.isPlaying;
-            return (
-              <div
-                key={i}
-                className={`w-1 origin-bottom transition-all duration-300 ${i < 20 ? 'bg-amber' : i < 24 ? 'bg-amber/70' : 'bg-red-500/70'}`}
-                style={{
-                  height: isPlaying ? `${h}%` : '8%',
-                  animation: isPlaying ? `vu ${0.2 + (h / 100) * 0.3}s ease-in-out infinite alternate` : 'none',
-                  animationDelay: isPlaying ? `${i * 0.02}s` : '0s',
-                  opacity: isPlaying ? 1 : 0.25,
-                }}
-              />
-            );
-          })}
+          {vuBarHeights.current.map((h, i) => (
+            <div
+              key={i}
+              className={`w-1 origin-bottom ${i < 20 ? 'bg-amber' : i < 24 ? 'bg-amber/70' : 'bg-red-500/70'}`}
+              style={{
+                height: `${h}%`,
+                transform: playerState.isPlaying ? undefined : 'scaleY(0.15)',
+                animation: playerState.isPlaying ? `vu ${0.2 + (h / 100) * 0.3}s ease-in-out infinite alternate` : 'none',
+                animationDelay: `${i * 0.02}s`,
+                opacity: playerState.isPlaying ? 1 : 0.25,
+                transition: playerState.isPlaying ? 'none' : 'transform 0.4s ease, opacity 0.4s ease',
+              }}
+            />
+          ))}
         </div>
 
         {/* Volume */}
