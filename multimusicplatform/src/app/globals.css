@@ -67,3 +67,9 @@ body::after {
   background: linear-gradient(90deg, var(--rust) 0%, var(--amber) 50%, var(--rust) 100%);
   opacity: 0.5;
 }
+
+/* VU meter bar animation — defined here so it's always available for inline style references */
+@keyframes vu {
+  from { transform: scaleY(0.35); opacity: 0.45; }
+  to   { transform: scaleY(1);    opacity: 1; }
+}
