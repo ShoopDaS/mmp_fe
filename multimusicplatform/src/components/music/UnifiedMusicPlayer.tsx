@@ -440,20 +440,21 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
 
         {/* VU Meter */}
         <div className="flex items-end justify-center gap-px h-6 mb-4">
-          {vuBarHeights.current.map((h, i) => (
-            <div
-              key={i}
-              className={`w-1 origin-bottom ${i < 20 ? 'bg-amber' : i < 24 ? 'bg-amber/70' : 'bg-red-500/70'}`}
-              style={{
-                height: `${h}%`,
-                animation: playerState.isPlaying ? `vu ${0.2 + (h / 100) * 0.3}s ease-in-out infinite alternate` : 'none',
-                animationDelay: `${(i * 0.02)}s`,
-                opacity: playerState.isPlaying ? 1 : 0.3,
-                transform: playerState.isPlaying ? undefined : 'scaleY(0.2)',
-                transition: 'opacity 0.3s, transform 0.3s',
-              }}
-            />
-          ))}
+          {vuBarHeights.current.map((h, i) => {
+            const isPlaying = playerState.isPlaying;
+            return (
+              <div
+                key={i}
+                className={`w-1 origin-bottom transition-all duration-300 ${i < 20 ? 'bg-amber' : i < 24 ? 'bg-amber/70' : 'bg-red-500/70'}`}
+                style={{
+                  height: isPlaying ? `${h}%` : '8%',
+                  animation: isPlaying ? `vu ${0.2 + (h / 100) * 0.3}s ease-in-out infinite alternate` : 'none',
+                  animationDelay: isPlaying ? `${i * 0.02}s` : '0s',
+                  opacity: isPlaying ? 1 : 0.25,
+                }}
+              />
+            );
+          })}
         </div>
 
         {/* Volume */}
@@ -465,12 +466,18 @@ const UnifiedMusicPlayer = forwardRef<UnifiedMusicPlayerRef, UnifiedMusicPlayerP
             </svg>
           </button>
           <div
-            className="flex-1 h-1 bg-warm cursor-pointer relative group"
+            className="flex-1 h-3 cursor-pointer relative group flex items-center"
             onClick={handleVolumeClick}
             onWheel={handleVolumeWheel}
           >
-            <div className="h-full bg-amber" style={{ width: `${playerState.volume * 100}%` }}>
-              <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-2 h-2 bg-amber opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div className="absolute inset-y-0 left-0 right-0 flex items-center">
+              <div className="w-full h-1 bg-warm relative">
+                <div className="h-full bg-amber" style={{ width: `${playerState.volume * 100}%` }} />
+                <div
+                  className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-amber opacity-0 group-hover:opacity-100 transition-opacity"
+                  style={{ left: `${playerState.volume * 100}%`, transform: 'translate(-50%, -50%)' }}
+                />
+              </div>
             </div>
           </div>
           <span className="font-condensed text-[10px] text-muted w-7 text-right">{Math.round(playerState.volume * 100)}%</span>
