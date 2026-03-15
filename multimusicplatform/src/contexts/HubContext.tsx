@@ -134,7 +134,7 @@ export function HubProvider({ children }: { children: ReactNode }) {
           const res = await apiClient.getCustomPlaylistTracks(activePlaylist.id);
           if (res.data?.tracks) tracks = res.data.tracks;
         } else if (activePlaylist.platform === 'spotify' && spotifyToken) {
-          tracks = await fetchSpotifyPlaylistTracks(activePlaylist.uri, spotifyToken) as any;
+          tracks = await fetchSpotifyPlaylistTracks(activePlaylist.id, spotifyToken) as any;
         } else if (activePlaylist.platform === 'youtube' && youtubeToken) {
           tracks = await fetchYouTubePlaylistTracks(activePlaylist.uri, youtubeToken) as any;
         } else if (activePlaylist.platform === 'soundcloud' && soundcloudToken) {

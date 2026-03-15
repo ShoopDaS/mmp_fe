@@ -1,7 +1,11 @@
 'use client';
 
+import { useCallback } from 'react';
 import { useHub } from '@/contexts/HubContext';
+import { useQueue } from '@/hooks/useQueue';
 import { CustomPlaylist } from '@/types/playlist';
+import TrackList from '@/components/music/TrackList';
+import { apiClient } from '@/lib/api';
 
 /* ── Cassette SVG Icon ─────────────────────────────────────── */
 
@@ -93,6 +97,7 @@ function PlaylistHeaderCard({
   imageUrl,
   trackCount,
   platform,
+  onPlayAll,
 }: {
   name: string;
   description?: string;
@@ -100,6 +105,7 @@ function PlaylistHeaderCard({
   imageUrl?: string | null;
   trackCount: number;
   platform: string;
+  onPlayAll?: () => void;
 }) {
   const isStave = platform === 'mmp';
 
@@ -135,7 +141,7 @@ function PlaylistHeaderCard({
 
         {/* Actions */}
         <div className="flex items-center gap-2 flex-shrink-0">
-          <button className="bg-amber text-bg font-condensed text-xs tracking-wider uppercase px-4 py-2 hover:opacity-90 transition-opacity">
+          <button onClick={onPlayAll} className="bg-amber text-bg font-condensed text-xs tracking-wider uppercase px-4 py-2 hover:opacity-90 transition-opacity">
             ▶ Play All
           </button>
           {isStave ? (
@@ -156,13 +162,80 @@ function PlaylistHeaderCard({
 /* ── Main Library Page ─────────────────────────────────────── */
 
 export default function LibraryPage() {
-  const { activePlaylist, playlistTracks, isLoadingPlaylistTracks, customPlaylists } = useHub();
+  const {
+    activePlaylist, playlistTracks, isLoadingPlaylistTracks,
+    customPlaylists, setCustomPlaylists,
+    playlistTrackIds, setPlaylistTrackIds,
+    triggerTogglePlay, isPlaying,
+  } = useHub();
+  const queue = useQueue();
+  const currentTrack = queue.getCurrentTrack();
+
+  const isStave = activePlaylist?.platform === 'mmp';
+  const mode = isStave ? 'library' : 'library-platform';
+
+  // Map CustomTrackItem[] → Track[] for TrackList
+  const tracks = playlistTracks.map((t: any) => ({
+    id: t.trackId || t.id,
+    platform: t.platform,
+    name: t.name,
+    uri: t.uri,
+    artists: t.artists || [],
+    album: {
+      name: t.albumName || t.album?.name || '',
+      images: t.albumImageUrl ? [{ url: t.albumImageUrl }] : (t.album?.images || []),
+    },
+    duration_ms: t.duration_ms,
+    preview_url: t.preview_url || null,
+  }));
+
+  const handlePlayTrack = (track: any) => {
+    const index = tracks.findIndex((t: any) => t.id === track.id);
+    queue.playFromList(tracks, index >= 0 ? index : 0, activePlaylist?.name || 'Library');
+  };
+
+  const handlePlayAll = () => {
+    if (tracks.length > 0) {
+      queue.playFromList(tracks, 0, activePlaylist?.name || 'Library');
+    }
+  };
+
+  const handleReorderTracks = useCallback(async (fromIndex: number, toIndex: number) => {
+    if (!activePlaylist || !isStave) return;
+    const updated = [...playlistTracks];
+    const [moved] = updated.splice(fromIndex, 1);
+    updated.splice(toIndex, 0, moved);
+    try {
+      await apiClient.reorderCustomPlaylistTracks(
+        activePlaylist.id,
+        updated.map((t: any, i: number) => ({ trackId: t.trackId || t.id, order: (i + 1) * 1000 }))
+      );
+    } catch { /* ignore */ }
+  }, [activePlaylist, isStave, playlistTracks]);
+
+  const handleRemoveFromPlaylist = useCallback((track: any) => {
+    if (!activePlaylist || !isStave) return;
+    const trackId = track.id || track.trackId;
+    setCustomPlaylists((prev: CustomPlaylist[]) =>
+      prev.map(p => p.playlistId === activePlaylist.id ? { ...p, trackCount: Math.max(0, p.trackCount - 1) } : p)
+    );
+    apiClient.removeTrackFromCustomPlaylist(activePlaylist.id, trackId);
+  }, [activePlaylist, isStave, setCustomPlaylists]);
+
+  const handleAddToCustomPlaylist = useCallback(async (track: any, playlistId: string) => {
+    if (playlistTrackIds[playlistId]?.has(track.id)) return;
+    await apiClient.addTrackToCustomPlaylist(playlistId, {
+      trackId: track.id, platform: track.platform, name: track.name, uri: track.uri,
+      artists: track.artists, albumName: track.album.name, albumImageUrl: track.album.images[0]?.url || '',
+      duration_ms: track.duration_ms, preview_url: track.preview_url || null,
+    });
+    setCustomPlaylists((prev: CustomPlaylist[]) => prev.map(p => p.playlistId === playlistId ? { ...p, trackCount: p.trackCount + 1 } : p));
+    setPlaylistTrackIds((prev: any) => ({ ...prev, [playlistId]: new Set(prev[playlistId] || []).add(track.id) }));
+  }, [playlistTrackIds, setCustomPlaylists, setPlaylistTrackIds]);
 
   if (!activePlaylist) {
     return <EmptyLibraryState />;
   }
-
-  const isStave = activePlaylist.platform === 'mmp';
 
   // For Stave playlists, pull description & coverImage from customPlaylists
   let description: string | undefined;
@@ -186,6 +259,7 @@ export default function LibraryPage() {
         imageUrl={activePlaylist.imageUrl}
         trackCount={activePlaylist.trackCount}
         platform={activePlaylist.platform}
+        onPlayAll={handlePlayAll}
       />
 
       {isLoadingPlaylistTracks ? (
@@ -193,44 +267,23 @@ export default function LibraryPage() {
       ) : playlistTracks.length === 0 ? (
         <EmptyTrackState isStave={isStave} />
       ) : (
-        <div className="p-6">
-          {/* Track list – simple table for now, WP-6 will add TrackList component */}
-          <div className="flex flex-col gap-0">
-            {playlistTracks.map((track, i) => (
-              <div
-                key={track.trackId || i}
-                className="flex items-center gap-4 px-4 py-3 border-b border-warm hover:bg-warm/50 transition-colors group"
-              >
-                <span className="w-8 text-right font-condensed text-xs text-muted">
-                  {i + 1}
-                </span>
-                {track.albumImageUrl && (
-                  <img
-                    src={track.albumImageUrl}
-                    alt=""
-                    className="w-10 h-10 object-cover"
-                  />
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-cream text-sm font-light truncate">{track.name}</p>
-                  <p className="text-sub text-xs truncate">
-                    {track.artists
-                      ?.map((a: { name: string } | string) =>
-                        typeof a === 'string' ? a : a.name
-                      )
-                      .join(', ')}
-                  </p>
-                </div>
-                <span className="text-muted text-xs font-condensed">
-                  {track.duration_ms
-                    ? `${Math.floor(track.duration_ms / 60000)}:${String(
-                        Math.floor((track.duration_ms % 60000) / 1000)
-                      ).padStart(2, '0')}`
-                    : ''}
-                </span>
-              </div>
-            ))}
-          </div>
+        <div className="px-2 py-4">
+          <TrackList
+            tracks={tracks}
+            mode={mode}
+            onPlay={handlePlayTrack}
+            onTogglePlay={triggerTogglePlay}
+            onAddToQueue={(track: any) => queue.addToQueue([track])}
+            onPlayNext={queue.playNext}
+            currentTrack={currentTrack as any}
+            isPlaying={isPlaying}
+            isCustomPlaylist={isStave}
+            onRemoveFromPlaylist={isStave ? handleRemoveFromPlaylist : undefined}
+            onReorderTracks={isStave ? handleReorderTracks : undefined}
+            customPlaylists={customPlaylists}
+            onAddToCustomPlaylist={handleAddToCustomPlaylist}
+            playlistTrackIds={playlistTrackIds}
+          />
         </div>
       )}
     </div>
