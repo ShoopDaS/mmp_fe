@@ -4,6 +4,7 @@ import { createContext, useContext, useState, useEffect, ReactNode, useCallback 
 import { apiClient } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { CustomPlaylist, UnifiedPlaylist, CustomTrackItem } from '@/types/playlist';
+import { fetchSpotifyPlaylistTracks, fetchYouTubePlaylistTracks, fetchSoundCloudPlaylistTracks } from '@/lib/platformHelpers';
 
 interface StoredToken {
   accessToken: string;
@@ -47,6 +48,9 @@ interface HubContextType {
   playlistTrackIds: Record<string, Set<string>>;
   setPlaylistTrackIds: React.Dispatch<React.SetStateAction<Record<string, Set<string>>>>;
 
+  playlistTracks: CustomTrackItem[];
+  isLoadingPlaylistTracks: boolean;
+
   // Global Player Controls
   globalPlayToggle: number;
   triggerTogglePlay: () => void;
@@ -66,6 +70,9 @@ export function HubProvider({ children }: { children: ReactNode }) {
   const [customPlaylists, setCustomPlaylists] = useState<CustomPlaylist[]>([]);
   const [activePlaylist, setActivePlaylist] = useState<UnifiedPlaylist | null>(null);
   const [playlistTrackIds, setPlaylistTrackIds] = useState<Record<string, Set<string>>>({});
+  
+  const [playlistTracks, setPlaylistTracks] = useState<CustomTrackItem[]>([]);
+  const [isLoadingPlaylistTracks, setIsLoadingPlaylistTracks] = useState(false);
   
   const [globalPlayToggle, setGlobalPlayToggle] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false); // Track playing state globally
@@ -113,12 +120,43 @@ export function HubProvider({ children }: { children: ReactNode }) {
     loadPlatformTokens();
   }, [loadPlatformTokens]);
 
+  useEffect(() => {
+    if (!activePlaylist) {
+      setPlaylistTracks([]);
+      return;
+    }
+    let cancelled = false;
+    setIsLoadingPlaylistTracks(true);
+    const load = async () => {
+      let tracks: CustomTrackItem[] = [];
+      try {
+        if (activePlaylist.platform === 'mmp') {
+          const res = await apiClient.getCustomPlaylistTracks(activePlaylist.id);
+          if (res.data?.tracks) tracks = res.data.tracks;
+        } else if (activePlaylist.platform === 'spotify' && spotifyToken) {
+          tracks = await fetchSpotifyPlaylistTracks(activePlaylist.uri, spotifyToken) as any;
+        } else if (activePlaylist.platform === 'youtube' && youtubeToken) {
+          tracks = await fetchYouTubePlaylistTracks(activePlaylist.uri, youtubeToken) as any;
+        } else if (activePlaylist.platform === 'soundcloud' && soundcloudToken) {
+          tracks = await fetchSoundCloudPlaylistTracks(activePlaylist.id, soundcloudToken) as any;
+        }
+      } catch (e) { /* swallow, show empty */ }
+      if (!cancelled) {
+        setPlaylistTracks(tracks);
+        setIsLoadingPlaylistTracks(false);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [activePlaylist?.id]);
+
   return (
     <HubContext.Provider value={{
       spotifyToken, youtubeToken, soundcloudToken, loadPlatformTokens,
       customPlaylists, setCustomPlaylists,
       activePlaylist, setActivePlaylist,
       playlistTrackIds, setPlaylistTrackIds,
+      playlistTracks, isLoadingPlaylistTracks,
       globalPlayToggle, triggerTogglePlay,
       isPlaying, setIsPlaying
     }}>
